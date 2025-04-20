@@ -7,9 +7,31 @@ BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 RED = (255, 0, 0)  
 BLUE = (0, 0, 255)  
+GREEN = (0, 200, 0)
 DOT_RADIUS = 5
 GRID_SPACING = 100 
 MARGIN = 100 
+CLICK_RADIUS = 15
+LINE_COLOR = BLACK
+DOT_HIGHLIGHT_RADIUS = 7
+
+def get_point_at_vt(dot_positions, x, y, click_radius=CLICK_RADIUS):
+    for i, vt in enumerate(dot_positions):
+        px, py = vt
+        dist = (px - x)**2 + (py - y)**2
+        if dist < click_radius**2:
+            return i
+    return None 
+
+def draw_line(surface, dot_positions, id1, id2, color, thickness=3):
+    num_dots = len(dot_positions)
+    if not (0 <= id1 < num_dots and 0 <= id2 < num_dots): return
+    try:
+        vt1 = dot_positions[id1]
+        vt2 = dot_positions[id2]
+        pygame.draw.line(surface, color, vt1, vt2, thickness)
+    except IndexError:
+        print(f"Error drawing line: Index out of range for IDs ({id1}, {id2})")
 
 def display_dots(rows, cols, mode): 
     pygame.init()
@@ -87,6 +109,9 @@ def display_dots(rows, cols, mode):
             x = c * GRID_SPACING + MARGIN
             y = r * GRID_SPACING + MARGIN
             dot_positions.append((x, y))
+    
+    selected_dot_id = None
+    lines_drawn = []
             
     running = True
     while running:
@@ -94,20 +119,74 @@ def display_dots(rows, cols, mode):
             if event.type == pygame.QUIT:
                 running = False
 
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_x, mouse_y = event.pos
+                clicked_dot_id = get_point_at_vt(dot_positions, mouse_x, mouse_y)
+
+                if clicked_dot_id is not None:
+                    if selected_dot_id is None:
+                        selected_dot_id = clicked_dot_id
+                    elif selected_dot_id == clicked_dot_id:
+                        print("Clicked same dot, deselecting.") 
+                        selected_dot_id = None
+                    else:
+                        id1 = selected_dot_id
+                        id2 = clicked_dot_id
+
+                        is_adjacent = False
+                        vt1 = dot_positions[id1]
+                        vt2 = dot_positions[id2]
+
+                        if abs(vt1[1] - vt2[1]) < 5 and abs(vt1[0] - vt2[0] - GRID_SPACING) < 5 or \
+                           abs(vt1[1] - vt2[1]) < 5 and abs(vt1[0] - vt2[0] + GRID_SPACING) < 5 :
+                           is_adjacent = True
+
+                        elif abs(vt1[0] - vt2[0]) < 5 and abs(vt1[1] - vt2[1] - GRID_SPACING) < 5 or \
+                             abs(vt1[0] - vt2[0]) < 5 and abs(vt1[1] - vt2[1] + GRID_SPACING) < 5:
+                             is_adjacent = True
+
+                        if is_adjacent:
+                            id_pair = tuple(sorted((id1, id2)))
+                            line_exists = any(line['id1'] == id_pair[0] and line['id2'] == id_pair[1] for line in lines_drawn)
+
+                            if not line_exists:
+                                lines_drawn.append({"id1": id_pair[0], "id2": id_pair[1], "color": LINE_COLOR})
+                            else:
+                                print("Line already exists.") 
+                        else:
+                            print("Dots are not adjacent, line not added.") 
+
+                        selected_dot_id = None
+
+                else: 
+                    print("Clicked empty space, deselecting.")
+                    selected_dot_id = None
         SURF.fill(WHITE) 
         
         SURF.blit(score_p1_surf, (start_x_p1, text_y))
         SURF.blit(score_p2_surf, (start_x_p2, text_y))
+        
+        for line_info in lines_drawn:
+            draw_line(SURF, dot_positions, line_info["id1"], line_info["id2"], line_info["color"])
 
-        for x, y in dot_positions:
-            gfxdraw.filled_circle(SURF, x, y, DOT_RADIUS, BLACK)
-            gfxdraw.aacircle(SURF, x, y, DOT_RADIUS, BLACK)
+        for i, pos in enumerate(dot_positions):
+            x, y = pos
+            radius = DOT_RADIUS
+            dot_color = BLACK
+
+            if i == selected_dot_id:
+                radius = DOT_HIGHLIGHT_RADIUS
+                dot_color = GREEN
+
+            gfxdraw.filled_circle(SURF, x, y, radius, dot_color)
+            gfxdraw.aacircle(SURF, x, y, radius, dot_color)
 
         pygame.display.update()
 
         clock.tick(30)
 
     pygame.quit()
+    
 
 def start_display(board_size_str, mode):
     try:
