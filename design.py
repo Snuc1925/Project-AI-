@@ -131,7 +131,6 @@ class DotAndBoxGame:
         btn_back.pack(side=tk.BOTTOM, pady=10)
         
     def initiate_game_start(self, board_size_str, mode):
-        """Hides the Tkinter window and calls the actual game start function."""
         try:
             self.root.withdraw() # Hide the Tkinter window
             start_display(board_size_str, mode) # Call the function in main.py
@@ -144,38 +143,6 @@ class DotAndBoxGame:
                     self.create_main_menu()
             except tk.TclError:
                  print("Tkinter window was closed.")
-    
-    # def select_board_size(self):
-    #     self.clear_window()
-
-    #     container = tk.Frame(self.root)
-    #     container.pack(expand=True)
-
-    #     label = tk.Label(container, text="Chọn kích thước bảng:", font=("VNI-Dom", 16))
-    #     label.pack(pady=20)
-
-    #     # Định nghĩa danh sách size + thuộc tính đặc biệt nếu có
-    #     sizes = [
-    #         {"text": "3x3", "bg": "green", "fg": "yellow"},
-    #         {"text": "4x4", "bg": "yellow"},
-    #         {"text": "4x5", "bg": "#ff5b61", "fg": "light yellow"},
-    #     ]
-
-    #     # Tạo các button
-    #     for size in sizes:
-    #         btn_config = {
-    #             "text": size["text"],
-    #             "font": ("VNI-Dom", 14),
-    #             "command": lambda s=size["text"]: self.start_game(s),
-    #             "bd": 6,
-    #             "bg": size.get("bg", "SystemButtonFace"),
-    #             "fg": size.get("fg", "black")
-    #         }
-    #         btn = tk.Button(container, **btn_config)
-    #         btn.pack(pady=10)
-
-    #     btn_back = tk.Button(self.root, text="← Quay lại", font=("VNI-Dom", 10), command=self.select_level)
-    #     btn_back.pack(side=tk.BOTTOM, pady=10)
 
 # Chạy chương trình
 if __name__ == "__main__":
