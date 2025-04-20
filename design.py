@@ -115,15 +115,15 @@ class DotAndBoxGame:
         for size in sizes:
             if (size == "3x3"): 
                 btn = tk.Button(container, text=size, font=("VNI-Dom", 14),
-                            command=lambda s=size: self.initiate_game_start(s,self.selected_mode),bg="Green",fg="Yellow") 
+                            command=lambda s=size: self.initiate_game_start(s,self.selected_mode), bd="5", bg="Green", fg="Yellow") 
                 btn.grid(column=0,row=2)
             if (size == "4x4"): 
                 btn = tk.Button(container, text=size, font=("VNI-Dom", 14),
-                            command=lambda s=size: self.initiate_game_start(s, self.selected_mode), bg="Yellow")
+                            command=lambda s=size: self.initiate_game_start(s, self.selected_mode), bd="5", bg="Yellow")
                 btn.grid(column=0,row=3)
             if (size == "4x5"): 
                 btn = tk.Button(container, text=size, font=("VNI-Dom", 14),
-                            command=lambda s=size: self.initiate_game_start(s, self.selected_mode), bg="#ff5b61",fg="light yellow")
+                            command=lambda s=size: self.initiate_game_start(s, self.selected_mode), bd="5", bg="#ff5b61", fg="light yellow")
                 btn.grid(column=0,row=4)
             # btn.pack(pady=20)
 
@@ -143,7 +143,7 @@ class DotAndBoxGame:
                     self.create_main_menu()
             except tk.TclError:
                  print("Tkinter window was closed.")
-
+    
 # Chạy chương trình
 if __name__ == "__main__":
     root = tk.Tk()
