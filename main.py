@@ -2,6 +2,9 @@ import pygame
 import sys
 from pygame import gfxdraw 
 import os
+from collections import defaultdict
+import random
+
 
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
@@ -71,6 +74,38 @@ def draw_colored_squares(idx, squares, dot_positions, canvas, color=BLACK):
     a, b, c, d = squares[idx]
     points = [dot_positions[a], dot_positions[b], dot_positions[d], dot_positions[c]]  # theo chiều kim đồng hồ
     pygame.draw.polygon(canvas, color, points)
+
+def bot_choose_move(lines_drawn, squares):
+    line_set = set((l['id1'], l['id2']) for l in lines_drawn)
+
+    # Nhóm theo số cạnh đã vẽ
+    moves_by_edges = {i: [] for i in range(4)}
+
+    for square in squares:
+        edges = [
+            (square[0], square[1]),  # top
+            (square[1], square[3]),  # right
+            (square[2], square[3]),  # bottom
+            (square[0], square[2])   # left
+        ]
+        existing = [edge for edge in edges if edge in line_set]
+        missing = [edge for edge in edges if edge not in line_set]
+        num_existing = len(existing)
+
+        if missing:
+            # Ưu tiên 3 cạnh (điền cạnh cuối tạo điểm), sau đó 0,1, rồi 2 cạnh cuối cùng
+            moves_by_edges[num_existing].extend(missing)
+
+    if moves_by_edges[3]:  # tạo điểm cho bot
+        return random.choice(moves_by_edges[3])
+    elif moves_by_edges[0] or moves_by_edges[1]:  # nước an toàn
+        safe_moves = moves_by_edges[0] + moves_by_edges[1]
+        return random.choice(safe_moves)
+    elif moves_by_edges[2]:  # nước nguy hiểm (tạo cơ hội cho đối thủ)
+        return random.choice(moves_by_edges[2])
+    
+    return None  # không còn nước nào
+
 
 def display_dots(rows, cols, mode): 
     pygame.init()
@@ -164,7 +199,7 @@ def display_dots(rows, cols, mode):
             if event.type == pygame.QUIT:
                 running = False
 
-            if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.type == pygame.MOUSEBUTTONDOWN and current_player == 1:
                 mouse_x, mouse_y = event.pos
                 clicked_dot_id = get_point_at_vt(dot_positions, mouse_x, mouse_y)
 
@@ -199,23 +234,33 @@ def display_dots(rows, cols, mode):
                                 lines_drawn.append({"id1": id_pair[0], "id2": id_pair[1], "player": current_player})
                                 print(lines_drawn)
 
-                                if len(new_squares_indices) != 0:
-                                    if current_player == 1:
-                                        list_squares_1.extend(new_squares_indices)
-                                    else:
-                                        list_squares_2.extend(new_squares_indices)
+                                if new_squares_indices:
+                                    list_squares_1.extend(new_squares_indices)
                                 else:
-                                    current_player = 3 - current_player;
+                                    current_player = 2  # Chuyển sang bot
                             else:
                                 print("Line already exists.") 
                         else:
                             print("Dots are not adjacent, line not added.") 
-
                         selected_dot_id = None
-
                 else: 
                     print("Clicked empty space, deselecting.")
                     selected_dot_id = None
+
+        # Bot turn
+        if current_player == 2:
+            move = bot_choose_move(lines_drawn, squares)
+            if move:
+                id1, id2 = move
+                new_squares_indices = check_new_squares((id1, id2), lines_drawn, squares)
+                lines_drawn.append({"id1": id1, "id2": id2, "player": 2})
+                print(lines_drawn)
+                print(f"Bot added line: {id1}-{id2}")
+
+                if new_squares_indices:
+                    list_squares_2.extend(new_squares_indices)
+                else:
+                    current_player = 1  # Chuyển lại cho người chơi
 
         SURF.fill(WHITE) 
 
