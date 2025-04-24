@@ -6,13 +6,16 @@ import os
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 RED = (255, 0, 0)  
+LIGHT_RED = (255, 114, 114)
 BLUE = (0, 0, 255)  
+LIGHT_BLUE = (148, 249, 237)
 GREEN = (0, 200, 0)
 DOT_RADIUS = 5
 GRID_SPACING = 100 
 MARGIN = 100 
 CLICK_RADIUS = 15
 LINE_COLOR = BLACK
+LINE_COLOR
 DOT_HIGHLIGHT_RADIUS = 7
 
 def get_point_at_vt(dot_positions, x, y, click_radius=CLICK_RADIUS):
@@ -33,6 +36,42 @@ def draw_line(surface, dot_positions, id1, id2, color, thickness=3):
     except IndexError:
         print(f"Error drawing line: Index out of range for IDs ({id1}, {id2})")
 
+def generate_squares(rows, cols):
+    squares = []
+    for r in range(rows - 1):
+        for c in range(cols - 1):
+            top_left = r * cols + c
+            top_right = top_left + 1
+            bottom_left = top_left + cols
+            bottom_right = bottom_left + 1
+            squares.append((top_left, top_right, bottom_left, bottom_right))
+    return squares
+
+def edges_of_square(square):
+    a, b, c, d = square
+    return [tuple(sorted(edge)) for edge in [(a, b), (a, c), (b, d), (c, d)]]
+
+def extract_edge_set(lines_drawn):
+    return set(tuple(sorted((line['id1'], line['id2']))) for line in lines_drawn)
+
+def check_new_squares(new_edge, lines_drawn, squares):
+    current_edges = extract_edge_set(lines_drawn)
+    current_edges.add(new_edge)  # giả định thêm new_line
+
+    new_squares = []
+    for idx, square in enumerate(squares):
+        edges = edges_of_square(square)
+        if new_edge in edges:
+            if all(edge in current_edges for edge in edges):
+                new_squares.append(idx)
+    
+    return new_squares   
+
+def draw_colored_squares(idx, squares, dot_positions, canvas, color=BLACK):
+    a, b, c, d = squares[idx]
+    points = [dot_positions[a], dot_positions[b], dot_positions[d], dot_positions[c]]  # theo chiều kim đồng hồ
+    pygame.draw.polygon(canvas, color, points)
+
 def display_dots(rows, cols, mode): 
     pygame.init()
 
@@ -52,7 +91,7 @@ def display_dots(rows, cols, mode):
     
     pygame.display.set_caption("Dots and Boxes")
     
-    icon_path = "C:\\Users\\To Nhu\\Documents\\Python\\AI project\\Images\\dotsandboxes.png"
+    icon_path = os.path.join(os.path.dirname(__file__), 'images', 'dotsandboxes.png')
     try:
         if os.path.exists(icon_path):
              icon_surf = pygame.image.load(icon_path)
@@ -112,6 +151,12 @@ def display_dots(rows, cols, mode):
     
     selected_dot_id = None
     lines_drawn = []
+
+    current_player = 1
+    squares = generate_squares(rows, cols)
+
+    list_squares_1 = []
+    list_squares_2 = []
             
     running = True
     while running:
@@ -150,7 +195,17 @@ def display_dots(rows, cols, mode):
                             line_exists = any(line['id1'] == id_pair[0] and line['id2'] == id_pair[1] for line in lines_drawn)
 
                             if not line_exists:
-                                lines_drawn.append({"id1": id_pair[0], "id2": id_pair[1], "color": LINE_COLOR})
+                                new_squares_indices = check_new_squares(id_pair, lines_drawn, squares)
+                                lines_drawn.append({"id1": id_pair[0], "id2": id_pair[1], "player": current_player})
+                                print(lines_drawn)
+
+                                if len(new_squares_indices) != 0:
+                                    if current_player == 1:
+                                        list_squares_1.extend(new_squares_indices)
+                                    else:
+                                        list_squares_2.extend(new_squares_indices)
+                                else:
+                                    current_player = 3 - current_player;
                             else:
                                 print("Line already exists.") 
                         else:
@@ -161,13 +216,31 @@ def display_dots(rows, cols, mode):
                 else: 
                     print("Clicked empty space, deselecting.")
                     selected_dot_id = None
+
         SURF.fill(WHITE) 
+
+        score_p1_text = f"{player1_name}: {len(list_squares_1)}"
+        score_p2_text = f"{player2_name}: {len(list_squares_2)}"
+
+        score_p1_surf = score_font.render(score_p1_text, True, player1_color)
+        score_p2_surf = score_font.render(score_p2_text, True, player2_color)
         
         SURF.blit(score_p1_surf, (start_x_p1, text_y))
         SURF.blit(score_p2_surf, (start_x_p2, text_y))
+
+        for idx in list_squares_1:
+            draw_colored_squares(idx, squares, dot_positions, SURF, LIGHT_BLUE)
+        for idx in list_squares_2:
+            draw_colored_squares(idx, squares, dot_positions, SURF, LIGHT_RED)
         
         for line_info in lines_drawn:
-            draw_line(SURF, dot_positions, line_info["id1"], line_info["id2"], line_info["color"])
+            if line_info["player"] == 1:
+                draw_color = BLUE
+            else:
+                draw_color = RED
+            draw_line(SURF, dot_positions, line_info["id1"], line_info["id2"], draw_color)
+
+
 
         for i, pos in enumerate(dot_positions):
             x, y = pos
