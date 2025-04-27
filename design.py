@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import *
-import os
 from tkinter import messagebox
 from main import start_display
 
@@ -10,8 +9,7 @@ class DotAndBoxGame:
         self.root.title("Dots and Boxes")
         self.root.geometry("500x500+1000+300")
         self.root.resizable(False, False)
-        icon_path = os.path.join(os.path.dirname(__file__), 'images', 'dotsandboxes.ico')
-        self.root.iconbitmap = icon_path
+        self.root.iconbitmap("Images/dotsandboxes.ico")
 
         self.selected_mode = None
         self.create_main_menu()

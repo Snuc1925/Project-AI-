@@ -2,25 +2,20 @@ import pygame
 import sys
 from pygame import gfxdraw 
 import os
-from collections import defaultdict
-import random
-
 
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 RED = (255, 0, 0)  
-LIGHT_RED = (255, 114, 114)
 BLUE = (0, 0, 255)  
-LIGHT_BLUE = (148, 249, 237)
 GREEN = (0, 200, 0)
 DOT_RADIUS = 5
 GRID_SPACING = 100 
 MARGIN = 100 
 CLICK_RADIUS = 15
 LINE_COLOR = BLACK
-LINE_COLOR
 DOT_HIGHLIGHT_RADIUS = 7
 
+### Kiểm tra chọn điểm
 def get_point_at_vt(dot_positions, x, y, click_radius=CLICK_RADIUS):
     for i, vt in enumerate(dot_positions):
         px, py = vt
@@ -29,6 +24,7 @@ def get_point_at_vt(dot_positions, x, y, click_radius=CLICK_RADIUS):
             return i
     return None 
 
+### Vẽ nét
 def draw_line(surface, dot_positions, id1, id2, color, thickness=3):
     num_dots = len(dot_positions)
     if not (0 <= id1 < num_dots and 0 <= id2 < num_dots): return
@@ -38,74 +34,6 @@ def draw_line(surface, dot_positions, id1, id2, color, thickness=3):
         pygame.draw.line(surface, color, vt1, vt2, thickness)
     except IndexError:
         print(f"Error drawing line: Index out of range for IDs ({id1}, {id2})")
-
-def generate_squares(rows, cols):
-    squares = []
-    for r in range(rows - 1):
-        for c in range(cols - 1):
-            top_left = r * cols + c
-            top_right = top_left + 1
-            bottom_left = top_left + cols
-            bottom_right = bottom_left + 1
-            squares.append((top_left, top_right, bottom_left, bottom_right))
-    return squares
-
-def edges_of_square(square):
-    a, b, c, d = square
-    return [tuple(sorted(edge)) for edge in [(a, b), (a, c), (b, d), (c, d)]]
-
-def extract_edge_set(lines_drawn):
-    return set(tuple(sorted((line['id1'], line['id2']))) for line in lines_drawn)
-
-def check_new_squares(new_edge, lines_drawn, squares):
-    current_edges = extract_edge_set(lines_drawn)
-    current_edges.add(new_edge)  # giả định thêm new_line
-
-    new_squares = []
-    for idx, square in enumerate(squares):
-        edges = edges_of_square(square)
-        if new_edge in edges:
-            if all(edge in current_edges for edge in edges):
-                new_squares.append(idx)
-    
-    return new_squares   
-
-def draw_colored_squares(idx, squares, dot_positions, canvas, color=BLACK):
-    a, b, c, d = squares[idx]
-    points = [dot_positions[a], dot_positions[b], dot_positions[d], dot_positions[c]]  # theo chiều kim đồng hồ
-    pygame.draw.polygon(canvas, color, points)
-
-def bot_choose_move(lines_drawn, squares):
-    line_set = set((l['id1'], l['id2']) for l in lines_drawn)
-
-    # Nhóm theo số cạnh đã vẽ
-    moves_by_edges = {i: [] for i in range(4)}
-
-    for square in squares:
-        edges = [
-            (square[0], square[1]),  # top
-            (square[1], square[3]),  # right
-            (square[2], square[3]),  # bottom
-            (square[0], square[2])   # left
-        ]
-        existing = [edge for edge in edges if edge in line_set]
-        missing = [edge for edge in edges if edge not in line_set]
-        num_existing = len(existing)
-
-        if missing:
-            # Ưu tiên 3 cạnh (điền cạnh cuối tạo điểm), sau đó 0,1, rồi 2 cạnh cuối cùng
-            moves_by_edges[num_existing].extend(missing)
-
-    if moves_by_edges[3]:  # tạo điểm cho bot
-        return random.choice(moves_by_edges[3])
-    elif moves_by_edges[0] or moves_by_edges[1]:  # nước an toàn
-        safe_moves = moves_by_edges[0] + moves_by_edges[1]
-        return random.choice(safe_moves)
-    elif moves_by_edges[2]:  # nước nguy hiểm (tạo cơ hội cho đối thủ)
-        return random.choice(moves_by_edges[2])
-    
-    return None  # không còn nước nào
-
 
 def display_dots(rows, cols, mode): 
     pygame.init()
@@ -126,7 +54,7 @@ def display_dots(rows, cols, mode):
     
     pygame.display.set_caption("Dots and Boxes")
     
-    icon_path = os.path.join(os.path.dirname(__file__), 'images', 'dotsandboxes.png')
+    icon_path = "Images/dotsandboxes.png"
     try:
         if os.path.exists(icon_path):
              icon_surf = pygame.image.load(icon_path)
@@ -186,12 +114,8 @@ def display_dots(rows, cols, mode):
     
     selected_dot_id = None
     lines_drawn = []
-
-    current_player = 1
-    squares = generate_squares(rows, cols)
-
-    list_squares_1 = []
-    list_squares_2 = []
+#############################
+    print(dot_positions)
             
     running = True
     while running:
@@ -199,7 +123,7 @@ def display_dots(rows, cols, mode):
             if event.type == pygame.QUIT:
                 running = False
 
-            if event.type == pygame.MOUSEBUTTONDOWN and current_player == 1:
+            if event.type == pygame.MOUSEBUTTONDOWN:
                 mouse_x, mouse_y = event.pos
                 clicked_dot_id = get_point_at_vt(dot_positions, mouse_x, mouse_y)
 
@@ -230,62 +154,24 @@ def display_dots(rows, cols, mode):
                             line_exists = any(line['id1'] == id_pair[0] and line['id2'] == id_pair[1] for line in lines_drawn)
 
                             if not line_exists:
-                                new_squares_indices = check_new_squares(id_pair, lines_drawn, squares)
-                                lines_drawn.append({"id1": id_pair[0], "id2": id_pair[1], "player": current_player})
-                                print(lines_drawn)
-
-                                if new_squares_indices:
-                                    list_squares_1.extend(new_squares_indices)
-                                else:
-                                    current_player = 2  # Chuyển sang bot
+                                lines_drawn.append({"id1": id_pair[0], "id2": id_pair[1], "color": LINE_COLOR})
                             else:
                                 print("Line already exists.") 
                         else:
                             print("Dots are not adjacent, line not added.") 
+
                         selected_dot_id = None
+
                 else: 
                     print("Clicked empty space, deselecting.")
                     selected_dot_id = None
-
-        # Bot turn
-        if current_player == 2:
-            move = bot_choose_move(lines_drawn, squares)
-            if move:
-                id1, id2 = move
-                new_squares_indices = check_new_squares((id1, id2), lines_drawn, squares)
-                lines_drawn.append({"id1": id1, "id2": id2, "player": 2})
-                print(lines_drawn)
-                print(f"Bot added line: {id1}-{id2}")
-
-                if new_squares_indices:
-                    list_squares_2.extend(new_squares_indices)
-                else:
-                    current_player = 1  # Chuyển lại cho người chơi
-
         SURF.fill(WHITE) 
-
-        score_p1_text = f"{player1_name}: {len(list_squares_1)}"
-        score_p2_text = f"{player2_name}: {len(list_squares_2)}"
-
-        score_p1_surf = score_font.render(score_p1_text, True, player1_color)
-        score_p2_surf = score_font.render(score_p2_text, True, player2_color)
         
         SURF.blit(score_p1_surf, (start_x_p1, text_y))
         SURF.blit(score_p2_surf, (start_x_p2, text_y))
-
-        for idx in list_squares_1:
-            draw_colored_squares(idx, squares, dot_positions, SURF, LIGHT_BLUE)
-        for idx in list_squares_2:
-            draw_colored_squares(idx, squares, dot_positions, SURF, LIGHT_RED)
         
         for line_info in lines_drawn:
-            if line_info["player"] == 1:
-                draw_color = BLUE
-            else:
-                draw_color = RED
-            draw_line(SURF, dot_positions, line_info["id1"], line_info["id2"], draw_color)
-
-
+            draw_line(SURF, dot_positions, line_info["id1"], line_info["id2"], line_info["color"])
 
         for i, pos in enumerate(dot_positions):
             x, y = pos
