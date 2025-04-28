@@ -345,8 +345,8 @@ def check_box(dot_positions, lines_drawn, boxes_drawn, color):
         lines = [
             (id1, id2),
             (id2, id3),
-            (id3, id4),
-            (id4, id1)
+            (id4, id3),
+            (id1, id4)
         ]
 
         # Kiểm tra xem tất cả các đường nối đã được vẽ hay chưa
@@ -360,7 +360,7 @@ def check_box(dot_positions, lines_drawn, boxes_drawn, color):
             # print("lines_drawn color: ", len(lines_drawn))
             # print("lines_drawn in color: ", lines_drawn)
             # print("boxes_drawn in color: ", boxes_drawn)
-            if ((latest_line["id1"], latest_line["id2"]) in lines) or box_info["color"] == WHITE:
+            if tuple(sorted([latest_line["id1"], latest_line["id2"]])) in [tuple(sorted([pair[0], pair[1]])) for pair in lines]:
                 box_info["color"] = color
                 # print("final color: ", color, lines)
                 # print("lines_drawn color: ", len(lines_drawn))
