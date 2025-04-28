@@ -183,10 +183,6 @@ def display_dots(rows, cols, mode):
     player = 1
 
     while running:
-        if player == 1:
-            color = PLAYER1_COLOR
-        else:
-            color = PLAYER2_COLOR
 
         state = {
             "dot_positions": dot_positions,
@@ -199,6 +195,7 @@ def display_dots(rows, cols, mode):
                 running = False
 
             if (player == 1):
+                color = PLAYER1_COLOR
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     mouse_x, mouse_y = event.pos
                     clicked_dot_id = get_point_at_vt(dot_positions, mouse_x, mouse_y)
@@ -244,13 +241,17 @@ def display_dots(rows, cols, mode):
                         print("Clicked empty space, deselecting.")
                         selected_dot_id = None
             else:
-                new_state = move_for_ai(state, 4)
-                print("new_state:", new_state)
+                color = PLAYER2_COLOR
+                #print("old_state:", len(state["lines_drawn"]))
+                new_state = move_for_ai(state, 3)
+                #print("new_state:", len(new_state["lines_drawn"]))
                 lines_drawn = new_state["lines_drawn"]
                 boxes_drawn = new_state["boxes_drawn"]
-                print("new_state2['lines_drawn']: ", lines_drawn)
-                print("new_state2['boxes_drawn']: ", boxes_drawn)
+                #print("new_state2:", len(lines_drawn))
+                #print("new_state2['lines_drawn']: ", lines_drawn)
+                #print("new_state2['boxes_drawn']: ", boxes_drawn)
                 check_box(dot_positions, lines_drawn, boxes_drawn, color)
+                #print("After main AI check_box")
                 player = 1
 
         SURF.fill(WHITE)
@@ -326,6 +327,14 @@ def draw_box(surface, dot_positions, id1, id2, id3, id4, color, thickness=3, inn
 
 
 def check_box(dot_positions, lines_drawn, boxes_drawn, color):
+    # print("Start main AI check_box")
+    # print("Before loop")
+    # print("lines_drawn color: ", len(lines_drawn))
+    # print("lines_drawn in color: ", lines_drawn)
+    # print("boxes_drawn in color: ", boxes_drawn)
+    # print("After loop")
+    # print("color: ", color)
+    latest_line = lines_drawn[-1]
     for box_info in boxes_drawn:
         id1 = box_info["id1"]
         id2 = box_info["id2"]
@@ -342,13 +351,21 @@ def check_box(dot_positions, lines_drawn, boxes_drawn, color):
 
         # Kiểm tra xem tất cả các đường nối đã được vẽ hay chưa
         all_lines_exist = all(
-            any(line['id1'] == min(pair) and line['id2'] == max(pair) for line in lines_drawn) for pair in lines
+            any(line['id1'] == min(pair) and line['id2'] == max(pair) for line in lines_drawn)
+            for pair in lines
         )
 
         # Nếu tất cả các cạnh đã vẽ
         if all_lines_exist:
-            if box_info["color"] == WHITE:  # Chỉ thay đổi màu khi ô chưa có màu
+            # print("lines_drawn color: ", len(lines_drawn))
+            # print("lines_drawn in color: ", lines_drawn)
+            # print("boxes_drawn in color: ", boxes_drawn)
+            if ((latest_line["id1"], latest_line["id2"]) in lines) or box_info["color"] == WHITE:
                 box_info["color"] = color
+                # print("final color: ", color, lines)
+                # print("lines_drawn color: ", len(lines_drawn))
+                # print("lines_drawn in color: ", lines_drawn)
+                # print("boxes_drawn in color: ", boxes_drawn)
             box_info["num_lines"] = 4  # Ô hoàn thành 4 cạnh
         else:
             box_info["color"] = WHITE
@@ -359,9 +376,10 @@ def check_box(dot_positions, lines_drawn, boxes_drawn, color):
                 for line in lines_drawn:
                     if line['id1'] == min(pair) and line['id2'] == max(pair):
                         line_exists = True
+
+                    if line_exists:
+                        lines_completed += 1
                         break
-                if line_exists:
-                    lines_completed += 1
 
             # Cập nhật số lượng đường đã vẽ
             box_info["num_lines"] = lines_completed
@@ -450,9 +468,6 @@ def generate_moves(state, player):
 
 def minimax(state, depth, alpha, beta, maximizing_player):
 
-    if (depth == 0) or (game_over(state)):
-        return evaluate(state, 2 if maximizing_player else 1)
-
     dot_positions = state["dot_positions"].copy()
     lines_drawn = state["lines_drawn"].copy()
     boxes_drawn = state["boxes_drawn"].copy()
@@ -461,6 +476,9 @@ def minimax(state, depth, alpha, beta, maximizing_player):
         "lines_drawn": lines_drawn,
         "boxes_drawn": boxes_drawn,
     }
+
+    if (depth == 0) or (game_over(state)):
+        return evaluate(state, 2 if maximizing_player else 1)
 
     if maximizing_player:
         max_eval = float("-inf")
@@ -495,7 +513,7 @@ def move_for_ai(state, depth = 3):
     }
 
     for next_state in generate_moves(new_state, 2):
-        score = minimax(new_state, depth, float("-inf"), float("inf"), False)
+        score = minimax(next_state, depth, float("-inf"), float("inf"), False)
 
         if score > best_score:
             best_score = score
