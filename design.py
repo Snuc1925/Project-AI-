@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import *
-import os
 from tkinter import messagebox
 from main import start_display
 
@@ -10,8 +9,7 @@ class DotAndBoxGame:
         self.root.title("Dots and Boxes")
         self.root.geometry("500x500+1000+300")
         self.root.resizable(False, False)
-        icon_path = os.path.join(os.path.dirname(__file__), 'images', 'dotsandboxes.ico')
-        self.root.iconbitmap = icon_path
+        self.root.iconbitmap("Images\\dotsandboxes.ico")
 
         self.selected_mode = None
         self.create_main_menu()
@@ -50,20 +48,6 @@ class DotAndBoxGame:
         self.selected_mode = mode
         if (mode == "Person vs AI"): self.select_level()
         else: self.select_board_size()
-
-    # def select_level(self):
-    #     self.clear_window()
-    #     label = tk.Label(self.root, text="Chọn độ khó:", font=("VNI-Dom", 16))
-    #     label.pack(pady=30)
-
-    #     btn_easy = tk.Button(self.root, text="Dễ", font=("VNI-Dom", 14), command=self.select_board_size, bd="6", bg="light pink",fg="blue")
-    #     btn_easy.pack(pady=20)
-
-    #     btn_hard = tk.Button(self.root, text="Khó", font=("VNI-Dom", 14), command=self.select_board_size, bd="6", bg="light pink",fg="blue")
-    #     btn_hard.pack()
-
-    #     btn_back = tk.Button(self.root, text="← Quay lại", font=("VNI-Dom", 10), command=self.create_main_menu)
-    #     btn_back.pack(side=tk.BOTTOM, pady=10)
     
     def select_level(self):
         self.clear_window()
@@ -76,7 +60,8 @@ class DotAndBoxGame:
         container.rowconfigure(1, weight=1) 
         container.rowconfigure(2, weight=1) 
         container.rowconfigure(3, weight=1)  
-        container.rowconfigure(4, weight=2) 
+        container.rowconfigure(4, weight=1)
+        container.rowconfigure(5, weight=2) 
         
         
         label = tk.Label(container, text="Chọn độ khó:", font=("VNI-Dom", 16))
@@ -87,9 +72,13 @@ class DotAndBoxGame:
         # btn_easy.pack(pady=20)
         btn_easy.grid(row=2,column=0)
 
+        btn_medium = tk.Button(container, text="Vừa", font=("VNI-Dom", 14), command=self.select_board_size, bd="6", bg="light pink",fg="blue")
+        # btn_hard.pack()
+        btn_medium.grid(row=3,column=0)
+        
         btn_hard = tk.Button(container, text="Khó", font=("VNI-Dom", 14), command=self.select_board_size, bd="6", bg="light pink",fg="blue")
         # btn_hard.pack()
-        btn_hard.grid(row=3,column=0)
+        btn_hard.grid(row=4,column=0)
 
         btn_back = tk.Button(self.root, text="← Quay lại", font=("VNI-Dom", 10), command=self.create_main_menu)
         btn_back.pack(side=tk.BOTTOM, pady=10)
@@ -108,12 +97,13 @@ class DotAndBoxGame:
         container.rowconfigure(2, weight=1) 
         container.rowconfigure(3, weight=1)  
         container.rowconfigure(4, weight=1)
-        container.rowconfigure(5, weight=2) 
+        container.rowconfigure(5, weight=1)
+        container.rowconfigure(6, weight=2) 
         
         label = tk.Label(container, text= "Chọn kích thước bảng:", font=("VNI-Dom", 16))
         label.grid(column=0,row=1)
         
-        sizes = ["3x3", "4x4", "4x5"]
+        sizes = ["3x3", "4x4", "4x5","5x5"]
         for size in sizes:
             if (size == "3x3"): 
                 btn = tk.Button(container, text=size, font=("VNI-Dom", 14),
@@ -125,17 +115,30 @@ class DotAndBoxGame:
                 btn.grid(column=0,row=3)
             if (size == "4x5"): 
                 btn = tk.Button(container, text=size, font=("VNI-Dom", 14),
-                            command=lambda s=size: self.initiate_game_start(s, self.selected_mode), bd="5", bg="#ff5b61", fg="light yellow")
+                            command=lambda s=size: self.initiate_game_start(s, self.selected_mode), bd="5", bg="#F4A950", fg="blue")
                 btn.grid(column=0,row=4)
+            if (size == "5x5"): 
+                btn = tk.Button(container, text=size, font=("VNI-Dom", 14),
+                            command=lambda s=size: self.initiate_game_start(s, self.selected_mode), bd="5", bg="#ff5b61", fg="light yellow")
+                btn.grid(column=0,row=5)
+                
+                def blink():
+                    current_color = btn.cget("fg")
+                    new_color = "cyan" if current_color == "light yellow" else "light yellow"
+                    btn.config(fg=new_color)
+                    btn.after(500, blink)
+
+                blink()  # Hiệu ứng nhấp nháy
             # btn.pack(pady=20)
 
         btn_back = tk.Button(self.root, text="← Quay lại", font=("VNI-Dom", 10), command=self.select_level)
         btn_back.pack(side=tk.BOTTOM, pady=10)
         
     def initiate_game_start(self, board_size_str, mode):
+        """Hides the Tkinter window and calls the actual game start function."""
         try:
             self.root.withdraw() # Hide the Tkinter window
-            start_display(board_size_str, mode) # Call the function in main.py
+            start_display(board_size_str, mode, self.on_back_to_menu) # Call the function in main.py
         except Exception as e:
             messagebox.showerror("Error", f"Could not start game: {e}")
         finally:
@@ -145,6 +148,10 @@ class DotAndBoxGame:
                     self.create_main_menu()
             except tk.TclError:
                  print("Tkinter window was closed.")
+                 
+    def on_back_to_menu(self):
+        self.root.deiconify()
+        self.create_main_menu()
     
 # Chạy chương trình
 if __name__ == "__main__":
