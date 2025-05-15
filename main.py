@@ -397,6 +397,35 @@ def display_dots(rows, cols, mode):
                                     list_squares_1.extend(new_squares_indices)
                                 else:
                                     current_player = 2  # Chuyển sang bot
+                                    
+                                # Update display immediately after player's move
+                                SURF.fill(WHITE)
+                                score_p1_text = f"{player1_name}: {len(list_squares_1)}"
+                                score_p2_text = f"{player2_name}: {len(list_squares_2)}"
+                                score_p1_surf = score_font.render(score_p1_text, True, player1_color)
+                                score_p2_surf = score_font.render(score_p2_text, True, player2_color)
+                                SURF.blit(score_p1_surf, (start_x_p1, text_y))
+                                SURF.blit(score_p2_surf, (start_x_p2, text_y))
+                                for idx in list_squares_1:
+                                    draw_colored_squares(idx, squares, dot_positions, SURF, LIGHT_BLUE)
+                                for idx in list_squares_2:
+                                    draw_colored_squares(idx, squares, dot_positions, SURF, LIGHT_RED)
+                                for line_info in lines_drawn:
+                                    if line_info["player"] == 1:
+                                        draw_color = BLUE
+                                    else:
+                                        draw_color = RED
+                                    draw_line(SURF, dot_positions, line_info["id1"], line_info["id2"], draw_color)
+                                for i, pos in enumerate(dot_positions):
+                                    x, y = pos
+                                    radius = DOT_RADIUS
+                                    dot_color = BLACK
+                                    if i == selected_dot_id:
+                                        radius = DOT_HIGHLIGHT_RADIUS
+                                        dot_color = GREEN
+                                    gfxdraw.filled_circle(SURF, x, y, radius, dot_color)
+                                    gfxdraw.aacircle(SURF, x, y, radius, dot_color)
+                                pygame.display.update()
                             else:
                                 print("Line already exists.") 
                         else:
@@ -443,8 +472,6 @@ def display_dots(rows, cols, mode):
             else:
                 draw_color = RED
             draw_line(SURF, dot_positions, line_info["id1"], line_info["id2"], draw_color)
-
-
 
         for i, pos in enumerate(dot_positions):
             x, y = pos
