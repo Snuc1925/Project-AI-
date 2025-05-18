@@ -120,7 +120,7 @@ def bot_choose_move(lines_drawn, squares):
     return None  
 
 
-def display_dots(rows, cols, mode): 
+def display_dots(rows, cols, mode, on_back_to_menu = None): 
     pygame.init()
 
     screen_width = (cols - 1) * GRID_SPACING + 2 * MARGIN
@@ -313,13 +313,70 @@ def display_dots(rows, cols, mode):
             gfxdraw.aacircle(SURF, x, y, radius, dot_color)
 
         pygame.display.update()
+        
+        if len(list_squares_1) + len(list_squares_2) == len(squares):
+            overlay = pygame.Surface((screen_width, screen_height))
+            overlay.set_alpha(200)  # Độ mờ
+            overlay.fill((0, 0, 0))  # Màu nền tối
+
+            if len(list_squares_1) > len(list_squares_2):
+                result_text = "You win"
+                result_color = "white"
+            elif len(list_squares_1) < len(list_squares_2):
+                result_text = "You lose"
+                result_color = "white"
+            else:
+                result_text = "You draw"
+                result_color = "white"
+
+            result_font = pygame.font.SysFont('Arial', 60)
+            result_surf = result_font.render(result_text, True, WHITE) 
+            result_rect = result_surf.get_rect(center=(screen_width // 2, screen_height // 2 - 50))
+            
+            SURF.blit(overlay, (0, 0)) 
+            SURF.blit(result_surf, result_rect)
+
+            button_font = pygame.font.SysFont("Arial", 25)
+
+
+            button_text_content = "Go back to Menu"
+            button_color = (0, 128, 255)
+            button_hover_color = (50, 178, 255)
+            button_width = 200
+            button_height = 40
+            button_rect = pygame.Rect(0, 0, button_width, button_height)
+            button_rect.centerx = screen_width // 2
+            button_rect.bottom = screen_height - 30 
+
+            button_text_surf = button_font.render(button_text_content, True, WHITE)
+            button_text_rect = button_text_surf.get_rect(center=button_rect.center)
+            
+            # Đổi màu khi hover vào nút Go back to Menu
+            mouse_pos = pygame.mouse.get_pos()
+            current_button_color = button_hover_color if button_rect.collidepoint(mouse_pos) else button_color
+            pygame.draw.rect(SURF, current_button_color, button_rect, border_radius=18) # Rounded corners
+            SURF.blit(button_text_surf, button_text_rect)
+            pygame.display.update()
+
+            waiting_for_action = True
+            while waiting_for_action:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        waiting_for_action = False
+                        running = False 
+                    elif event.type == pygame.MOUSEBUTTONDOWN:
+                        # check khi bấm có bấm vào vùng của nút Go back to menu không
+                        if event.button == 1 and button_rect.collidepoint(event.pos):
+                            waiting_for_action = False
+                            running = False 
+                            if on_back_to_menu: on_back_to_menu()
 
         clock.tick(30)
 
     pygame.quit()
     
     
-def start_display(board_size_str, mode):
+def start_display(board_size_str, mode, on_back_to_menu = None):
     try:
         parts = board_size_str.split('x')
         if len(parts) != 2:
@@ -332,7 +389,7 @@ def start_display(board_size_str, mode):
              print("Error: Board dimensions must be at least 1x1.")
              return
 
-        display_dots(rows, cols, mode)
+        display_dots(rows, cols, mode, on_back_to_menu)
 
     except (ValueError, IndexError) as e:
         print(f"Error parsing board size string '{board_size_str}': {e}")
