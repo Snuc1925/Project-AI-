@@ -150,15 +150,15 @@ class DotAndBoxGame:
             self.root.withdraw()
             if mode == "Person vs AI":
                 if self.selected_level == "easy":
-                    start_display_easy(board_size_str, mode)
+                    start_display_easy(board_size_str, mode, self.on_back_to_menu)
                 elif self.selected_level == "medium":
-                    start_display_medium(board_size_str, mode)
+                    start_display_medium(board_size_str, mode, self.on_back_to_menu)
                 elif self.selected_level == "hard":
-                    start_display_hard(board_size_str, mode)
+                    start_display_hard(board_size_str, mode, self.on_back_to_menu)
                 else:
                     raise ValueError("Chưa chọn mức độ khó.")
             else:
-                start_display_easy(board_size_str, mode)
+                start_display_easy(board_size_str, mode, self.on_back_to_menu)
         except Exception as e:
             messagebox.showerror("Error", f"Could not start game: {e}")
         finally:
@@ -168,7 +168,10 @@ class DotAndBoxGame:
                     self.create_main_menu()
             except tk.TclError:
                 print("Tkinter window was closed.")
-
+    def on_back_to_menu(self):
+        self.root.deiconify()
+        self.create_main_menu()
+    
 # Chạy chương trình
 if __name__ == "__main__":
     root = tk.Tk()
