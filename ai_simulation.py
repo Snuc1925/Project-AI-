@@ -6,7 +6,8 @@ import os
 from main import (
     generate_squares, edges_of_square, extract_edge_set, get_valid_moves,
     is_game_over, get_board_size, check_new_squares, find_forced_moves,
-    get_opening_move, minimax, evaluate_position, predict_chain_reaction
+    get_opening_move, minimax, evaluate_position, predict_chain_reaction,
+    is_square_controlled
 )
 from main_grok import (
     bot_choose_move,
@@ -15,6 +16,23 @@ from main_grok import (
     find_forced_moves as grok_find_forced_moves,
     get_opening_move as grok_get_opening_move,
     move_priority, evaluate_forced_move
+)
+from main_mcts import (
+    bot_choose_move as mcts_bot_choose_move,
+    initialize_zobrist_table,
+    compute_zobrist_hash,
+    store_transposition,
+    lookup_transposition,
+    MCTSNode,
+    mcts_search,
+    mcts_simulation,
+    simulation_policy,
+    move_priority as mcts_move_priority,
+    evaluate_forced_move as mcts_evaluate_forced_move,
+    predict_chain_reaction as mcts_predict_chain_reaction,
+    evaluate_position as mcts_evaluate_position,
+    transposition_table,  # Import the global transposition table
+    TABLE_SIZE
 )
 
 # Colors and game settings
@@ -33,8 +51,21 @@ LINE_COLOR = BLACK
 DOT_HIGHLIGHT_RADIUS = 7
 THICKNESS = 3
 
-VISUAL_DELAY = 2  # seconds between moves for observer
-TIME_LIMIT = 5.0  # seconds per move
+# Time management constants
+MIN_MOVE_TIME = 1.5
+MAX_MOVE_TIME = 7.5
+BASE_MOVE_TIME = 4.5
+CRITICAL_MOVE_TIME = 7.0
+VISUAL_DELAY = 2.0  # seconds between moves for observer
+TIME_LIMIT = 5.0  # seconds per move for base AI
+
+# Board size options
+BOARD_SIZES = {
+    "3x3": (3, 3),
+    "4x4": (4, 4),
+    "4x5": (4, 5),
+    "5x5": (5, 5)
+}
 
 class AISimulation:
     def __init__(self, rows, cols):
@@ -50,7 +81,14 @@ class AISimulation:
         self.move_history = []
         self.game_phase = "opening"
         self.chain_count = {1: 0, 2: 0}
-        self.three_edge_squares = {1: 0, 2: 0}  # Track three-edge squares for each player
+        self.three_edge_squares = {1: 0, 2: 0}
+        
+        # Initialize Zobrist table for MCTS
+        self.zobrist_table = initialize_zobrist_table(rows * cols)
+        
+        # Clear transposition table if it gets too large
+        if len(transposition_table) > TABLE_SIZE:
+            transposition_table.clear()
         
         # Initialize pygame display and mixer
         pygame.init()
@@ -61,8 +99,8 @@ class AISimulation:
         try:
             if os.path.exists(music_path):
                 pygame.mixer.music.load(music_path)
-                pygame.mixer.music.set_volume(0.5)  # Set volume to 50%
-                pygame.mixer.music.play(-1)  # -1 means loop indefinitely
+                pygame.mixer.music.set_volume(0.5)
+                pygame.mixer.music.play(-1)
             else:
                 print(f"Warning: Background music file not found at {music_path}")
         except Exception as e:
@@ -148,6 +186,7 @@ class AISimulation:
                 if time.time() - start_time > TIME_LIMIT:
                     break
                     
+                # Evaluate forced move with chain reaction prediction
                 score = evaluate_forced_move(move, self.lines_drawn, self.squares)
                 if score > best_forced_score:
                     best_forced_score = score
@@ -156,6 +195,8 @@ class AISimulation:
             if best_forced_score > -9:  # CHAIN_PENALTY_BASE * 2
                 return best_forced_move
                 
+                
+        # If no good forced moves, use base AI with improved evaluation
         return self._base_ai_move()
 
     def _grok_ai_move(self):
@@ -187,6 +228,52 @@ class AISimulation:
             
         return move
 
+    def _mcts_ai_move(self):
+        start_time = time.time()
+        
+        # Count three-edge squares for time management
+        current_edges = extract_edge_set(self.lines_drawn)
+        three_edge_count = sum(1 for square in self.squares 
+                             if len([e for e in edges_of_square(square) if e in current_edges]) == 3)
+        
+        # Calculate game phase for time management
+        total_squares = len(self.squares)
+        completed_squares = sum(1 for square in self.squares if is_square_controlled(square, current_edges))
+        game_phase = completed_squares / total_squares if total_squares > 0 else 0
+        
+        # Determine time limit based on game state
+        if game_phase > 0.7:  # Endgame
+            time_limit = CRITICAL_MOVE_TIME
+        elif three_edge_count >= 2:  # Critical position
+            time_limit = CRITICAL_MOVE_TIME
+        elif three_edge_count == 1:  # Single three-edge square
+            time_limit = BASE_MOVE_TIME + 1.0
+        else:
+            time_limit = BASE_MOVE_TIME
+            
+        # Check for opening moves
+        if len(self.lines_drawn) < 2:
+            time.sleep(MIN_MOVE_TIME)
+            
+        # Initialize Zobrist table if not already done
+        if not hasattr(self, 'zobrist_table'):
+            board_size = get_board_size(self.squares)
+            num_dots = board_size[0] * board_size[1]
+            self.zobrist_table = initialize_zobrist_table(num_dots)
+            
+        # Clear transposition table if it gets too large
+        if len(transposition_table) > TABLE_SIZE:
+            transposition_table.clear()
+            
+        # Use MCTS search directly with all required parameters
+        best_move = mcts_search(self.lines_drawn, self.squares, self.zobrist_table, time_limit, start_time)
+        
+        elapsed_time = time.time() - start_time
+        if elapsed_time < MIN_MOVE_TIME:
+            time.sleep(MIN_MOVE_TIME - elapsed_time)
+            
+        return best_move
+
     def _update_game_phase(self):
         total_squares = len(self.squares)
         completed = len(self.completed_squares[1]) + len(self.completed_squares[2])
@@ -202,10 +289,12 @@ class AISimulation:
     def make_move(self, player, ai_type):
         start_time = time.time()
         
-        if ai_type == "base":
+        if ai_type == "αβpruning":
             move = self._base_ai_move()
-        elif ai_type == "improved":
+        elif ai_type == "αβpruning_improved":
             move = self._improved_ai_move()
+        elif ai_type == "MCTS":
+            move = self._mcts_ai_move()
         else:  # grok
             move = self._grok_ai_move()
             
@@ -237,7 +326,7 @@ class AISimulation:
                 "three_edge_squares": self.three_edge_squares[player]
             })
             
-            if move_time > 7.5:  # MAX_MOVE_TIME
+            if move_time > MAX_MOVE_TIME:
                 print(f"Warning: {ai_type} AI exceeded time limit ({move_time:.2f}s)")
                 
             self._update_game_phase()
@@ -359,16 +448,27 @@ def wait_for_next_match_button(screen, font, screen_width, screen_height):
 
 def ai_selection_menu(screen_width, screen_height, font):
     pygame.init()
+    # Make window slightly smaller
+    screen_width = max(screen_width, 800)  # Reduced from 900
+    screen_height = max(screen_height, 700)  # Reduced from 800
     screen = pygame.display.set_mode((screen_width, screen_height))
     pygame.display.set_caption("Select AIs for Match")
     clock = pygame.time.Clock()
     
-    ai_options = ["base", "improved", "grok"]
+    ai_options = ["αβpruning", "αβpruning_improved", "αβ_grok", "MCTS"]
     selected = {1: None, 2: None}
-    button_w, button_h = 160, 60
-    spacing = 30
-    top_margin = 80
-    left_margin = 80
+    
+    # Calculate button width based on longest text
+    button_h = 70  # Slightly reduced height
+    button_w = max(font.size(ai)[0] for ai in ai_options) + 60  # Add padding for text
+    spacing = 40  # Reduced spacing
+    top_margin = 120  # Reduced top margin
+    left_margin = 120  # Reduced left margin
+    
+    # Calculate total height needed for AI buttons
+    total_buttons_height = len(ai_options) * (button_h + spacing) - spacing
+    # Calculate bottom margin to ensure Start button doesn't overlap
+    bottom_margin = 120  # Reduced bottom margin
     
     running = True
     while running:
@@ -376,7 +476,7 @@ def ai_selection_menu(screen_width, screen_height, font):
         # Titles
         p1_label = font.render("Player 1 AI:", True, BLUE)
         p2_label = font.render("Player 2 AI:", True, RED)
-        screen.blit(p1_label, (left_margin, top_margin - 50))
+        screen.blit(p1_label, (left_margin, top_margin - 50))  # Adjusted title position
         screen.blit(p2_label, (screen_width//2 + left_margin//2, top_margin - 50))
         
         # Draw AI buttons for Player 1
@@ -386,8 +486,8 @@ def ai_selection_menu(screen_width, screen_height, font):
             y = top_margin + i * (button_h + spacing)
             rect = pygame.Rect(x, y, button_w, button_h)
             color = GREEN if selected[1] == ai else BLACK
-            pygame.draw.rect(screen, color, rect, border_radius=10, width=0 if selected[1] == ai else 2)
-            text = font.render(ai.capitalize(), True, WHITE if selected[1] == ai else color)
+            pygame.draw.rect(screen, color, rect, border_radius=12, width=0 if selected[1] == ai else 2)
+            text = font.render(ai, True, WHITE if selected[1] == ai else color)
             text_rect = text.get_rect(center=rect.center)
             screen.blit(text, text_rect)
             p1_buttons.append((rect, ai))
@@ -399,16 +499,16 @@ def ai_selection_menu(screen_width, screen_height, font):
             y = top_margin + i * (button_h + spacing)
             rect = pygame.Rect(x, y, button_w, button_h)
             color = GREEN if selected[2] == ai else BLACK
-            pygame.draw.rect(screen, color, rect, border_radius=10, width=0 if selected[2] == ai else 2)
-            text = font.render(ai.capitalize(), True, WHITE if selected[2] == ai else color)
+            pygame.draw.rect(screen, color, rect, border_radius=12, width=0 if selected[2] == ai else 2)
+            text = font.render(ai, True, WHITE if selected[2] == ai else color)
             text_rect = text.get_rect(center=rect.center)
             screen.blit(text, text_rect)
             p2_buttons.append((rect, ai))
         
-        # Draw Start Match button
+        # Draw Start Match button with proper spacing
         start_enabled = selected[1] is not None and selected[2] is not None and selected[1] != selected[2]
         start_color = GREEN if start_enabled else (180, 180, 180)
-        start_rect = pygame.Rect((screen_width-200)//2, screen_height-100, 200, 60)
+        start_rect = pygame.Rect((screen_width-250)//2, screen_height-bottom_margin, 250, button_h)  # Adjusted size
         pygame.draw.rect(screen, start_color, start_rect, border_radius=12)
         start_text = font.render("Start Match", True, WHITE)
         start_text_rect = start_text.get_rect(center=start_rect.center)
@@ -432,7 +532,55 @@ def ai_selection_menu(screen_width, screen_height, font):
                     return selected[1], selected[2]
         clock.tick(30)
 
-def run_simulation(rows, cols, ai1="base", ai2="improved", max_games=1, swap_colors=True):
+def board_size_selection_menu(screen_width, screen_height, font):
+    pygame.init()
+    screen = pygame.display.set_mode((screen_width, screen_height))
+    pygame.display.set_caption("Select Board Size")
+    clock = pygame.time.Clock()
+    
+    title = font.render("Select Board Size", True, BLACK)
+    title_rect = title.get_rect(center=(screen_width//2, 50))
+    
+    button_w, button_h = 160, 60
+    spacing = 30
+    top_margin = 120
+    left_margin = (screen_width - (button_w * 2 + spacing)) // 2
+    
+    buttons = []
+    for i, (size_name, _) in enumerate(BOARD_SIZES.items()):
+        row = i // 2
+        col = i % 2
+        x = left_margin + col * (button_w + spacing)
+        y = top_margin + row * (button_h + spacing)
+        rect = pygame.Rect(x, y, button_w, button_h)
+        buttons.append((rect, size_name))
+    
+    running = True
+    while running:
+        screen.fill(WHITE)
+        screen.blit(title, title_rect)
+        
+        for rect, size_name in buttons:
+            pygame.draw.rect(screen, BLACK, rect, border_radius=10, width=2)
+            text = font.render(size_name, True, BLACK)
+            text_rect = text.get_rect(center=rect.center)
+            screen.blit(text, text_rect)
+        
+        pygame.display.flip()
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                return None
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mx, my = event.pos
+                for rect, size_name in buttons:
+                    if rect.collidepoint(mx, my):
+                        return BOARD_SIZES[size_name]
+        
+        clock.tick(30)
+
+def run_simulation(rows, cols, ai1, ai2, max_games=1, swap_colors=True):
     games_played = 0
     while games_played < max_games:
         print(f"\nStarting game {games_played + 1}")
@@ -504,7 +652,7 @@ def run_simulation(rows, cols, ai1="base", ai2="improved", max_games=1, swap_col
 
 def main():
     while True:
-        # Menu for AI selection
+        # Menu for board size selection
         pygame.init()
         menu_width, menu_height = 700, 400
         try:
@@ -512,12 +660,20 @@ def main():
         except:
             menu_font = pygame.font.Font(None, 40)
             
+        # Get board size first
+        board_size = board_size_selection_menu(menu_width, menu_height, menu_font)
+        if board_size is None:
+            break
+            
+        rows, cols = board_size
+        
+        # Then get AI selection
         ai1, ai2 = ai_selection_menu(menu_width, menu_height, menu_font)
         if ai1 is None or ai2 is None:
             break
             
-        # Run simulation with selected AIs
-        if not run_simulation(5, 5, ai1=ai1, ai2=ai2, max_games=1, swap_colors=True):
+        # Run simulation with selected board size and AIs
+        if not run_simulation(rows, cols, ai1=ai1, ai2=ai2, max_games=1, swap_colors=True):
             break
             
         pygame.quit()
