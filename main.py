@@ -4,6 +4,9 @@ from pygame import gfxdraw
 import os
 from collections import defaultdict
 import random
+import copy
+import random
+import time
 
 sys.setrecursionlimit(10000)    
 BLACK = (0, 0, 0)
@@ -71,151 +74,217 @@ def check_new_squares(new_edge, lines_drawn, squares):
     
     return new_squares   
 
+# ----- Test medium
+def is_dangerous_move(new_edge, lines_drawn, squares):
+    current_edges = extract_edge_set(lines_drawn)
+    current_edges.add(new_edge)
+
+    for square in squares:
+        edges = edges_of_square(square)
+        cnt = sum(1 for edge in edges if edge in current_edges)
+        if cnt == 3 and new_edge in edges:
+            return True
+    return False
+
+def bot_choose_best_move(lines_drawn, squares):
+    line_set = extract_edge_set(lines_drawn)
+
+    candidates = []
+    for square in squares:
+        edges = edges_of_square(square)
+        existing = [edge for edge in edges if edge in line_set]
+        missing = [edge for edge in edges if edge not in line_set]
+
+        for edge in missing:
+            candidates.append(tuple(sorted(edge)))
+
+    best_move = None
+    min_gain = float('inf')
+
+    for move in candidates:
+        temp_lines = lines_drawn.copy()
+        temp_lines.append({"id1": move[0], "id2": move[1], "player": 0})
+
+        current_edges = extract_edge_set(temp_lines)
+        gain = 0
+
+        for square in squares:
+            edges = edges_of_square(square)
+            if all(edge in current_edges for edge in edges):
+                gain += 1
+
+        if gain < min_gain:
+            min_gain = gain
+            best_move = move
+
+    return best_move
+
+
+def simulate_player_chain_gain(temp_lines, squares):
+    gain = 0
+    edges = extract_edge_set(temp_lines)
+
+    while True:
+        found = False
+        for square in squares:
+            sq_edges = edges_of_square(square)
+            existing = [e for e in sq_edges if e in edges]
+            missing = [e for e in sq_edges if e not in edges]
+            if len(existing) == 3:
+                move = missing[0]
+                edges.add(move)
+                temp_lines.append({"id1": move[0], "id2": move[1], "player": 1})
+                gain += 1
+                found = True
+                break 
+        if not found:
+            break
+    return gain
+
+
+def check_new_squares(new_edge, lines_drawn, squares):
+    current_edges = extract_edge_set(lines_drawn)
+    current_edges.add(new_edge)  # giả định thêm new_line
+
+    new_squares = []
+    for idx, square in enumerate(squares):
+        edges = edges_of_square(square)
+        if new_edge in edges:
+            if all(edge in current_edges for edge in edges):
+                new_squares.append(idx)
+    
+    return new_squares   
+# -----
+
+
 def draw_colored_squares(idx, squares, dot_positions, canvas, color=BLACK):
     a, b, c, d = squares[idx]
     points = [dot_positions[a], dot_positions[b], dot_positions[d], dot_positions[c]]  # theo chiều kim đồng hồ
     pygame.draw.polygon(canvas, color, points)
 
-def bot_choose_move(lines_drawn, squares, depth=3):
-    line_set = set((l['id1'], l['id2']) for l in lines_drawn)
-    cnt = 0
+def bot_choose_move(lines_drawn, squares):
+    line_set = extract_edge_set(lines_drawn)
 
-    def get_possible_moves():
-        all_edges = set()
-        for square in squares:
-            edges = [
-                (square[0], square[1]),  # top
-                (square[1], square[3]),  # right
-                (square[2], square[3]),  # bottom
-                (square[0], square[2])   # left
-            ]
-            for e in edges:
-                if e not in line_set:
-                    all_edges.add(e)
-        return list(all_edges)
+    moves_by_edges = {i: [] for i in range(4)}
+    candidates = []
 
-    def count_box_claims(lines):
-        claimed_by_bot, claimed_by_opponent = 0, 0
-        line_set_local = set(lines)
-        for square in squares:
-            edges = [
-                (square[0], square[1]),
-                (square[1], square[3]),
-                (square[2], square[3]),
-                (square[0], square[2])
-            ]
-            if all(e in line_set_local for e in edges):
-                # Chưa xác định ai chiếm nên ta giả định lượt vẽ cuối chiếm
-                pass  # chỉ dùng để tính điểm cuối, không phân biệt ai chiếm ô
-        return claimed_by_bot, claimed_by_opponent  # placeholder
+    for square in squares:
+        edges = edges_of_square(square)
+        existing = [edge for edge in edges if edge in line_set]
+        missing = [edge for edge in edges if edge not in line_set]
+        num_existing = len(existing)
 
-    def is_box_completed(square, line_set_local):
+        for edge in missing:
+            candidates.append(tuple(sorted(edge)))
+
+        if missing:
+            moves_by_edges[num_existing].extend([tuple(sorted(edge)) for edge in missing])
+
+    if moves_by_edges[3]:
+        return random.choice(moves_by_edges[3])
+
+    safe_moves = []
+    for move in moves_by_edges[0] + moves_by_edges[1]:
+        if not is_dangerous_move(move, lines_drawn, squares):
+            safe_moves.append(move)
+
+    if safe_moves:
+        return random.choice(safe_moves)
+
+    return bot_choose_best_move(lines_drawn, squares)
+
+
+
+def bot_choose_move_MCTS(lines_drawn, squares, list_squares_1=[], list_squares_2=[], time_limit=1.0):
+    start_time = time.time()
+
+    all_dots = set()
+    for square in squares:
+        all_dots.update(square)
+    max_dot_id = max(all_dots)
+
+    # 1. Generate all possible valid lines
+    possible_moves = []
+    for square in squares:
         edges = [
-            (square[0], square[1]),
-            (square[1], square[3]),
-            (square[2], square[3]),
-            (square[0], square[2])
+            tuple(sorted((square[0], square[1]))),  # top
+            tuple(sorted((square[1], square[3]))),  # right
+            tuple(sorted((square[2], square[3]))),  # bottom
+            tuple(sorted((square[0], square[2])))   # left
         ]
-        return sum(1 for e in edges if e in line_set_local) == 3
+        for edge in edges:
+            if not any(d['id1'] == edge[0] and d['id2'] == edge[1] for d in lines_drawn):
+                if edge not in possible_moves:
+                    possible_moves.append(edge)
 
-    def is_terminal(line_set_local):
-        total_edges = set()
-        for square in squares:
-            total_edges |= {
-                (square[0], square[1]),
-                (square[1], square[3]),
-                (square[2], square[3]),
-                (square[0], square[2])
-            }
-        return line_set_local >= total_edges
+    # NEW: Ưu tiên nước đi tạo thành hình vuông
+    for move in possible_moves:
+        temp_lines = lines_drawn + [{"id1": move[0], "id2": move[1], "player": 2}]
+        if check_new_squares(move, temp_lines, squares):
+            return move
 
-    def evaluate_state(line_set_local):
-        bot_score = 0
-        opp_score = 0
-        for square in squares:
-            edges = [
-                (square[0], square[1]),
-                (square[1], square[3]),
-                (square[2], square[3]),
-                (square[0], square[2])
-            ]
-            drawn = sum(1 for e in edges if e in line_set_local)
-            if drawn == 4:
-                bot_score += 1  # Giả sử bot ăn, có thể cải tiến thêm để lưu lượt
-            elif drawn == 3:
-                opp_score += 1  # Đánh giá rủi ro bị mất điểm
-        return (bot_score - opp_score) * 10
+    # Giữ lại chỉ các nước đi không nguy hiểm
+    safe_moves = [m for m in possible_moves if not is_dangerous_move(m, lines_drawn, squares)]
 
+    if not safe_moves:
+        return random.choice(possible_moves)
 
-    def apply_move(line_set_local, move):
-        new_set = line_set_local.copy()
-        new_set.add(move)
+    possible_moves = safe_moves
 
-        gained_point = False
+    if not possible_moves:
+        return None
 
-        for square in squares:
-            edges = [
-                (square[0], square[1]),
-                (square[1], square[3]),
-                (square[2], square[3]),
-                (square[0], square[2])
-            ]
+    move_stats = {move: {"wins": 0, "sims": 0} for move in possible_moves}
 
-            # Trước khi move: đã có bao nhiêu cạnh của ô này?
-            completed_before = sum(1 for e in edges if e in line_set_local)
+    def simulate_game(move):
+        # copy trạng thái
+        lines_copy = copy.deepcopy(lines_drawn)
+        squares_1 = list(list_squares_1)
+        squares_2 = list(list_squares_2)
 
-            # Sau khi move: đã có bao nhiêu cạnh của ô này?
-            completed_after = sum(1 for e in edges if e in new_set)
+        current = 2  # Bot
 
-            # Nếu move làm cho ô này đủ 4 cạnh mà trước đó chưa đủ 4
-            if completed_before < 4 and completed_after == 4:
-                gained_point = True
-
-        return new_set, gained_point
-
-
-    def minimax(line_set_local, depth, alpha, beta, maximizing_player):
-        nonlocal cnt
-        cnt += 1 
-        if cnt > 5000:
-            print(cnt)
-        if depth == 0 or is_terminal(line_set_local):
-            return evaluate_state(line_set_local), None
-
-        possible_moves = get_possible_moves()
-        best_move = None
-
-        if maximizing_player:
-            max_eval = float('-inf')
-            for move in possible_moves:
-                new_set, gained = apply_move(line_set_local, move)
-                next_depth = depth if gained else depth - 1
-                eval, _ = minimax(new_set, next_depth, alpha, beta, gained or not maximizing_player)
-                if eval > max_eval:
-                    max_eval = eval
-                    best_move = move
-                alpha = max(alpha, eval)
-                if beta <= alpha:
-                    break
-            return max_eval, best_move
+        lines_copy.append({"id1": move[0], "id2": move[1], "player": current})
+        new_squares = check_new_squares(move, lines_copy, squares)
+        if new_squares:
+            squares_2.extend(new_squares)
         else:
-            min_eval = float('inf')
-            for move in possible_moves:
-                new_set, gained = apply_move(line_set_local, move)
-                # next_depth = depth if gained else depth - 1
-                next_depth = depth - 1
-                eval, _ = minimax(new_set, next_depth, alpha, beta, not (gained or not maximizing_player))
-                if eval < min_eval:
-                    min_eval = eval
-                    best_move = move
-                beta = min(beta, eval)
-                if beta <= alpha:
-                    break
-            return min_eval, best_move
+            current = 1
 
-    _, best_move = minimax(line_set, depth, float('-inf'), float('inf'), True)
-    print(cnt)
+        total_edges = []
+        for square in squares:
+            for edge in edges_of_square(square):
+                if edge != move and edge not in total_edges:
+                    total_edges.append(edge)
+
+        while len(lines_copy) < len(total_edges):
+            next_move = bot_choose_move(lines_copy, squares)
+            if not next_move:
+                break
+            lines_copy.append({"id1": next_move[0], "id2": next_move[1], "player": current})
+            new_squares = check_new_squares(next_move, lines_copy, squares)
+            if new_squares:
+                if current == 1:
+                    squares_1.extend(new_squares)
+                else:
+                    squares_2.extend(new_squares)
+            else:
+                current = 3 - current
+
+        return 2 if len(squares_2) > len(squares_1) else 1
+
+    # 2. MCTS mô phỏng
+    while time.time() - start_time < time_limit:
+        move = random.choice(possible_moves)
+        winner = simulate_game(move)
+        move_stats[move]["sims"] += 1
+        if winner == 2:
+            move_stats[move]["wins"] += 1
+
+    # 3. Chọn nước đi tốt nhất
+    best_move = max(possible_moves, key=lambda m: move_stats[m]["wins"] / (move_stats[m]["sims"] + 1e-5))
     return best_move
+
 
 
 def display_dots(rows, cols, mode): 
@@ -309,81 +378,49 @@ def display_dots(rows, cols, mode):
         if len(lines_drawn) == (rows - 1) * cols + rows * (cols - 1):
             print("END GAME!")
             break
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
 
-            if event.type == pygame.MOUSEBUTTONDOWN and current_player == 1:
-                mouse_x, mouse_y = event.pos
-                clicked_dot_id = get_point_at_vt(dot_positions, mouse_x, mouse_y)
-
-                if clicked_dot_id is not None:
-                    if selected_dot_id is None:
-                        selected_dot_id = clicked_dot_id
-                    elif selected_dot_id == clicked_dot_id:
-                        print("Clicked same dot, deselecting.") 
-                        selected_dot_id = None
-                    else:
-                        id1 = selected_dot_id
-                        id2 = clicked_dot_id
-
-                        is_adjacent = False
-                        vt1 = dot_positions[id1]
-                        vt2 = dot_positions[id2]
-
-                        if abs(vt1[1] - vt2[1]) < 5 and abs(vt1[0] - vt2[0] - GRID_SPACING) < 5 or \
-                           abs(vt1[1] - vt2[1]) < 5 and abs(vt1[0] - vt2[0] + GRID_SPACING) < 5 :
-                           is_adjacent = True
-
-                        elif abs(vt1[0] - vt2[0]) < 5 and abs(vt1[1] - vt2[1] - GRID_SPACING) < 5 or \
-                             abs(vt1[0] - vt2[0]) < 5 and abs(vt1[1] - vt2[1] + GRID_SPACING) < 5:
-                             is_adjacent = True
-
-                        if is_adjacent:
-                            id_pair = tuple(sorted((id1, id2)))
-                            line_exists = any(line['id1'] == id_pair[0] and line['id2'] == id_pair[1] for line in lines_drawn)
-
-                            if not line_exists:
-                                new_squares_indices = check_new_squares(id_pair, lines_drawn, squares)
-                                lines_drawn.append({"id1": id_pair[0], "id2": id_pair[1], "player": current_player})
-                                # print(lines_drawn)
-
-                                if new_squares_indices:
-                                    list_squares_1.extend(new_squares_indices)
-                                else:
-                                    current_player = 2  # Chuyển sang bot
-                            else:
-                                print("Line already exists.") 
-                        else:
-                            print("Dots are not adjacent, line not added.") 
-                        selected_dot_id = None
-                else: 
-                    print("Clicked empty space, deselecting.")
-                    selected_dot_id = None
-
-        # Bot turn
-        if current_player == 2:
+        # Bot player 1
+        if current_player == 1:
+            time.sleep(1)
             move = bot_choose_move(lines_drawn, squares)
             if move:
                 id1, id2 = move
                 new_squares_indices = check_new_squares((id1, id2), lines_drawn, squares)
+                lines_drawn.append({"id1": id1, "id2": id2, "player": 1})
+                print(f"Bot 1 added line: {id1}-{id2}")
+
+                if new_squares_indices:
+                    list_squares_1.extend(new_squares_indices)
+                else:
+                    current_player = 2
+
+        # Bot player 2
+        elif current_player == 2:
+            time.sleep(1)
+            move = bot_choose_move_MCTS(lines_drawn, squares, list_squares_1, list_squares_2)
+            if move:
+                id1, id2 = move
+                new_squares_indices = check_new_squares((id1, id2), lines_drawn, squares)
                 lines_drawn.append({"id1": id1, "id2": id2, "player": 2})
-                # print(lines_drawn)
-                print(f"Bot added line: {id1}-{id2}")
+                print(f"Bot 2 (MCTS) added line: {id1}-{id2}")
 
                 if new_squares_indices:
                     list_squares_2.extend(new_squares_indices)
                 else:
-                    current_player = 1  # Chuyển lại cho người chơi
+                    current_player = 1
 
-        SURF.fill(WHITE) 
+        SURF.fill(WHITE)
 
         score_p1_text = f"{player1_name}: {len(list_squares_1)}"
         score_p2_text = f"{player2_name}: {len(list_squares_2)}"
 
         score_p1_surf = score_font.render(score_p1_text, True, player1_color)
         score_p2_surf = score_font.render(score_p2_text, True, player2_color)
-        
+
         SURF.blit(score_p1_surf, (start_x_p1, text_y))
         SURF.blit(score_p2_surf, (start_x_p2, text_y))
 
@@ -391,30 +428,19 @@ def display_dots(rows, cols, mode):
             draw_colored_squares(idx, squares, dot_positions, SURF, LIGHT_BLUE)
         for idx in list_squares_2:
             draw_colored_squares(idx, squares, dot_positions, SURF, LIGHT_RED)
-        
+
         for line_info in lines_drawn:
-            if line_info["player"] == 1:
-                draw_color = BLUE
-            else:
-                draw_color = RED
+            draw_color = BLUE if line_info["player"] == 1 else RED
             draw_line(SURF, dot_positions, line_info["id1"], line_info["id2"], draw_color)
-
-
 
         for i, pos in enumerate(dot_positions):
             x, y = pos
             radius = DOT_RADIUS
             dot_color = BLACK
-
-            if i == selected_dot_id:
-                radius = DOT_HIGHLIGHT_RADIUS
-                dot_color = GREEN
-
             gfxdraw.filled_circle(SURF, x, y, radius, dot_color)
             gfxdraw.aacircle(SURF, x, y, radius, dot_color)
 
         pygame.display.update()
-
         clock.tick(30)
 
     pygame.quit()
