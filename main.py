@@ -281,7 +281,7 @@ def display_dots(rows, cols, mode, bot1, bot2, on_back_to_menu=None):
             else:
                 current_bot = bot2 if mode == "AI vs AI" else bot1
             
-            move = current_bot(lines_drawn, squares)
+            move = current_bot(lines_drawn, squares, list_squares_1, list_squares_2)
 
             if move:
                 id1, id2 = move

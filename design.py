@@ -4,11 +4,14 @@ import os
 from tkinter import messagebox
 from test_main_easy import start_display as start_display_easy
 from MCTS import start_display as start_display_medium
+
 from test_main_hard import start_display as start_display_hard
 from main import start_display
 
 from test_main_easy import bot_choose_move as bot_choose_move_easy
+from MCTS import bot_choose_move_MCTS as bot_choose_move_MCTS
 from test_main_hard import bot_choose_move as bot_choose_move_hard
+from GA import bot_choose_move as bot_choose_move_GA
 
 
 class DotAndBoxGame:
@@ -22,10 +25,20 @@ class DotAndBoxGame:
 
         self.selected_mode = None
         self.selected_level = None
+        self.selected_ai1_name = None
+        self.selected_ai2_name = None
         self.selected_ai1 = None
         self.selected_ai2 = None
         
         self.create_main_menu()
+
+        self.ai_options = [
+            ("Random", bot_choose_move_easy , "#8CFF9E"),                # xanh nhạt
+            ("Intuitive Algorithm", bot_choose_move_hard , "#FFEB99"),   # vàng nhạt
+            ("Genetic Algorithm", bot_choose_move_GA, "#FFA07A"),     # cam nhạt
+            ("Alpha-Beta", bot_choose_move_hard, "#FF6666"),            # đỏ nhạt
+            ("MCTS", bot_choose_move_MCTS, "#9933FF")                  # tím đậm
+        ]
 
     def clear_window(self):
         for widget in self.root.winfo_children():
@@ -132,15 +145,9 @@ class DotAndBoxGame:
         label = tk.Label(container, text="Chọn AI1:", font=("VNI-Dom", 16))
         label.grid(row=0, column=0)
 
-        ai_options = [
-            ("Random", "#8CFF9E"),                # xanh nhạt
-            ("Intuitive Algorithm","#FFEB99"),   # vàng nhạt
-            ("Genetic Algorithm","#FFA07A"),     # cam nhạt
-            ("Alpha-Beta", "#FF6666"),            # đỏ nhạt
-            ("MCTS", "#9933FF")                  # tím đậm
-        ]
 
-        for i, (ai_name,color) in enumerate(ai_options):
+
+        for i, (ai_name, _, color) in enumerate(self.ai_options):
             btn = tk.Button(container, text=ai_name, font=("VNI-Dom", 14), bd=5,
                             command=lambda ai=ai_name: self.set_ai1(ai), width=15, bg=color)
             btn.grid(row=i+1, column=0, pady=2)
@@ -149,7 +156,12 @@ class DotAndBoxGame:
         btn_back.pack(side=tk.BOTTOM, pady=10)
 
     def set_ai1(self, ai_name):
-        self.selected_ai1 = ai_name
+        self.selected_ai1_name = ai_name
+
+        for i, (current_ai_name, bot, _) in enumerate(self.ai_options):
+            if self.selected_ai1_name == current_ai_name:
+                self.selected_ai1 = bot
+
         self.select_ai2()
 
     def select_ai2(self):
@@ -165,14 +177,7 @@ class DotAndBoxGame:
         label = tk.Label(container, text="Chọn AI2:", font=("VNI-Dom", 16))
         label.grid(row=0, column=0)
 
-        ai_options = [
-            ("Random", "#8CFF9E"),                # xanh nhạt
-            ("Intuitive Algorithm","#FFEB99"),   # vàng nhạt
-            ("Genetic Algorithm","#FFA07A"),     # cam nhạt
-            ("Alpha-Beta", "#FF6666"),            # đỏ nhạt
-            ("MCTS", "#9933FF")                  # tím đậm
-        ]
-        for i, (ai_name, color) in enumerate(ai_options):
+        for i, (ai_name, _,  color) in enumerate(self.ai_options):
             btn = tk.Button(container, text=ai_name, font=("VNI-Dom", 14), bd=5,bg=color,
                             width=15, command=lambda ai=ai_name: self.set_ai2(ai))
             btn.grid(row=i+1, column=0, pady=2)
@@ -181,7 +186,12 @@ class DotAndBoxGame:
         btn_back.pack(side=tk.BOTTOM, pady=10)
 
     def set_ai2(self, ai_name):
-        self.selected_ai2 = ai_name
+        self.selected_ai2_name = ai_name
+
+        for i, (current_ai_name, bot, _) in enumerate(self.ai_options):
+            if self.selected_ai2_name == current_ai_name:
+                self.selected_ai2 = bot
+
         self.select_board_size()
 
     def select_board_size(self):
@@ -232,7 +242,7 @@ class DotAndBoxGame:
             # btn.pack(pady=20)
 
         if self.selected_mode == "AI vs AI":
-            btn_back = tk.Button(self.root, text="← Quay lại", font=("VNI-Dom", 10), command=lambda: self.select_ai2(self.selected_ai1))
+            btn_back = tk.Button(self.root, text="← Quay lại", font=("VNI-Dom", 10), command=lambda: self.select_ai2(self.selected_ai1_name))
         elif self.selected_mode == "Person vs AI":
             btn_back = tk.Button(self.root, text="← Quay lại", font=("VNI-Dom", 10), command=self.select_level)
         else:
@@ -252,19 +262,24 @@ class DotAndBoxGame:
                 real_board_size = "6x6"
             else:
                 real_board_size = board_size_str
+
+            bot1 = None
+            bot2 = None
+
             if mode == "Person vs AI":
                 if self.selected_level == "Level 1":
-                    start_display_easy(real_board_size, mode, self.on_back_to_menu)
+                    bot1 = bot_choose_move_easy
                 elif self.selected_level == "Level 2":
-                    start_display_medium(real_board_size, mode, self.on_back_to_menu)
+                    bot1 = bot_choose_move_medium
                 elif self.selected_level == "Level 3":
-                    start_display_hard(real_board_size, mode, self.on_back_to_menu)
+                    bot1 = bot_choose_move_hard
                 else:
                     raise ValueError("Chưa chọn mức độ khó.")
             else:
-                bot1 = bot_choose_move_easy
-                bot2 = bot_choose_move_hard
-                start_display(real_board_size, mode, bot1, bot2, self.on_back_to_menu)
+                bot1 = self.selected_ai1
+                bot2 = self.selected_ai2
+                print(self.selected_ai1_name, self.selected_ai2_name)
+            start_display(real_board_size, mode, bot1, bot2, self.on_back_to_menu)
         except Exception as e:
             messagebox.showerror("Error", f"Could not start game: {e}")
         finally:
