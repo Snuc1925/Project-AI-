@@ -169,12 +169,12 @@ def draw_colored_squares(idx, squares, dot_positions, canvas, color=BLACK):
     points = [dot_positions[a], dot_positions[b], dot_positions[d], dot_positions[c]]  # theo chiều kim đồng hồ
     pygame.draw.polygon(canvas, color, points)
 
-def bot_choose_move(lines_drawn, squares):
+def bot_choose_move(lines_drawn, squares, list_squares_1=[], list_squares_2=[]):
     line_set = extract_edge_set(lines_drawn)
 
     moves_by_edges = {i: [] for i in range(4)}
     candidates = []
-
+    
     for square in squares:
         edges = edges_of_square(square)
         existing = [edge for edge in edges if edge in line_set]
