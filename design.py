@@ -5,6 +5,11 @@ from tkinter import messagebox
 from test_main_easy import start_display as start_display_easy
 from MCTS import start_display as start_display_medium
 from test_main_hard import start_display as start_display_hard
+from main import start_display
+
+from test_main_easy import bot_choose_move as bot_choose_move_easy
+from test_main_hard import bot_choose_move as bot_choose_move_hard
+
 
 class DotAndBoxGame:
     def __init__(self, root):
@@ -257,7 +262,9 @@ class DotAndBoxGame:
                 else:
                     raise ValueError("Chưa chọn mức độ khó.")
             else:
-                start_display_easy(real_board_size, mode, self.on_back_to_menu)
+                bot1 = bot_choose_move_easy
+                bot2 = bot_choose_move_hard
+                start_display(real_board_size, mode, bot1, bot2, self.on_back_to_menu)
         except Exception as e:
             messagebox.showerror("Error", f"Could not start game: {e}")
         finally:
