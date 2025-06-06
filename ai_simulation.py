@@ -3,36 +3,23 @@ import random
 import pygame
 from pygame import gfxdraw
 import os
-from main import (
+from main1 import (
     generate_squares, edges_of_square, extract_edge_set, get_valid_moves,
-    is_game_over, get_board_size, check_new_squares, find_forced_moves,
-    get_opening_move, minimax, evaluate_position, predict_chain_reaction,
-    is_square_controlled
+    is_game_over, check_new_squares, bot_choose_move
 )
 from main_grok import (
-    bot_choose_move,
+    bot_choose_move as grok_bot_choose_move,
     evaluate_position as grok_evaluate_position,
     predict_chain_reaction as grok_predict_chain_reaction,
     find_forced_moves as grok_find_forced_moves,
     get_opening_move as grok_get_opening_move,
-    move_priority, evaluate_forced_move
+    move_priority
 )
-from main_mcts import (
-    bot_choose_move as mcts_bot_choose_move,
+from αβpruning import (
+    bot_choose_move as grok1_bot_choose_move,
+    move_priority as grok1_move_priority,
     initialize_zobrist_table,
-    compute_zobrist_hash,
-    store_transposition,
-    lookup_transposition,
-    MCTSNode,
-    mcts_search,
-    mcts_simulation,
-    simulation_policy,
-    move_priority as mcts_move_priority,
-    evaluate_forced_move as mcts_evaluate_forced_move,
-    predict_chain_reaction as mcts_predict_chain_reaction,
-    evaluate_position as mcts_evaluate_position,
-    transposition_table,  # Import the global transposition table
-    TABLE_SIZE
+    TranspositionTable
 )
 
 # Colors and game settings
@@ -56,7 +43,7 @@ MIN_MOVE_TIME = 1.5
 MAX_MOVE_TIME = 7.5
 BASE_MOVE_TIME = 4.5
 CRITICAL_MOVE_TIME = 7.0
-VISUAL_DELAY = 2.0  # seconds between moves for observer
+VISUAL_DELAY = 1.0  # seconds between moves for observer
 TIME_LIMIT = 5.0  # seconds per move for base AI
 
 # Board size options
@@ -79,16 +66,8 @@ class AISimulation:
         self.move_times = {1: [], 2: []}
         self.total_moves = 0
         self.move_history = []
-        self.game_phase = "opening"
         self.chain_count = {1: 0, 2: 0}
         self.three_edge_squares = {1: 0, 2: 0}
-        
-        # Initialize Zobrist table for MCTS
-        self.zobrist_table = initialize_zobrist_table(rows * cols)
-        
-        # Clear transposition table if it gets too large
-        if len(transposition_table) > TABLE_SIZE:
-            transposition_table.clear()
         
         # Initialize pygame display and mixer
         pygame.init()
@@ -136,167 +115,45 @@ class AISimulation:
     def _base_ai_move(self):
         start_time = time.time()
         
-        # Try opening book first
-        opening_move = get_opening_move(get_board_size(self.squares), self.lines_drawn)
-        if opening_move:
-            return opening_move
-            
-        # Check for forced moves
-        forced_moves = find_forced_moves(self.lines_drawn, self.squares)
-        if forced_moves:
-            return forced_moves[0]
-            
-        # Use minimax for non-forced moves
-        best_move = None
-        best_score = float('-inf')
-        alpha = float('-inf')
-        beta = float('inf')
+        # Use the basic alpha-beta pruning implementation from main.py
+        move = bot_choose_move(self.lines_drawn, self.squares)
         
-        for move in get_valid_moves(self.lines_drawn, self.squares):
-            if time.time() - start_time > TIME_LIMIT:
-                break
-                
-            new_lines = self.lines_drawn.copy()
-            new_lines.append({"id1": move[0], "id2": move[1], "player": 2})
-            score = minimax(new_lines, self.squares, 3, alpha, beta, False)
-            chain_length = predict_chain_reaction(move, self.lines_drawn, self.squares)
-            score -= chain_length * 4.5
-            
-            if score > best_score:
-                best_score = score
-                best_move = move
-                
-        return best_move
-
-    def _improved_ai_move(self):
-        start_time = time.time()
-        
-        # Try opening book first
-        opening_move = get_opening_move(get_board_size(self.squares), self.lines_drawn)
-        if opening_move:
-            return opening_move
-            
-        # Check for forced moves
-        forced_moves = find_forced_moves(self.lines_drawn, self.squares)
-        if forced_moves:
-            best_forced_move = None
-            best_forced_score = float('-inf')
-            
-            for move in forced_moves:
-                if time.time() - start_time > TIME_LIMIT:
-                    break
-                    
-                # Evaluate forced move with chain reaction prediction
-                score = evaluate_forced_move(move, self.lines_drawn, self.squares)
-                if score > best_forced_score:
-                    best_forced_score = score
-                    best_forced_move = move
-                    
-            if best_forced_score > -9:  # CHAIN_PENALTY_BASE * 2
-                return best_forced_move
-                
-                
-        # If no good forced moves, use base AI with improved evaluation
-        return self._base_ai_move()
+        return move
 
     def _grok_ai_move(self):
         start_time = time.time()
         
-        # Count three-edge squares for time management
-        current_edges = extract_edge_set(self.lines_drawn)
-        three_edge_count = sum(1 for square in self.squares 
-                             if len([e for e in edges_of_square(square) if e in current_edges]) == 3)
-        
-        # Determine time limit based on game state
-        if three_edge_count >= 2:  # Critical position
-            time_limit = 7.0  # CRITICAL_MOVE_TIME
-        elif three_edge_count == 1:  # Single three-edge square
-            time_limit = 5.5  # BASE_MOVE_TIME + 1.0
-        else:
-            time_limit = 4.5  # BASE_MOVE_TIME
+        # Get valid moves and sort by priority
+        valid_moves = get_valid_moves(self.lines_drawn, self.squares)
+        if not valid_moves:
+            return None
             
-        # Check for opening moves
-        if len(self.lines_drawn) < 2:
-            time.sleep(1.5)  # MIN_MOVE_TIME for opening moves
-            
-        move = bot_choose_move(self.lines_drawn, self.squares)
-        
-        # Ensure minimum move time
-        elapsed_time = time.time() - start_time
-        if elapsed_time < 1.5:  # MIN_MOVE_TIME
-            time.sleep(1.5 - elapsed_time)
-            
-        return move
+        valid_moves.sort(key=lambda m: move_priority(m, self.lines_drawn, self.squares), reverse=True)
+        return grok_bot_choose_move(self.lines_drawn, self.squares)
 
-    def _mcts_ai_move(self):
+    def _grok1_ai_move(self):
         start_time = time.time()
         
-        # Count three-edge squares for time management
-        current_edges = extract_edge_set(self.lines_drawn)
-        three_edge_count = sum(1 for square in self.squares 
-                             if len([e for e in edges_of_square(square) if e in current_edges]) == 3)
+        # Initialize Zobrist table and transposition table
+        initialize_zobrist_table()
+        transposition_table = TranspositionTable()
         
-        # Calculate game phase for time management
-        total_squares = len(self.squares)
-        completed_squares = sum(1 for square in self.squares if is_square_controlled(square, current_edges))
-        game_phase = completed_squares / total_squares if total_squares > 0 else 0
-        
-        # Determine time limit based on game state
-        if game_phase > 0.7:  # Endgame
-            time_limit = CRITICAL_MOVE_TIME
-        elif three_edge_count >= 2:  # Critical position
-            time_limit = CRITICAL_MOVE_TIME
-        elif three_edge_count == 1:  # Single three-edge square
-            time_limit = BASE_MOVE_TIME + 1.0
-        else:
-            time_limit = BASE_MOVE_TIME
+        valid_moves = get_valid_moves(self.lines_drawn, self.squares)
+        if not valid_moves:
+            return None
             
-        # Check for opening moves
-        if len(self.lines_drawn) < 2:
-            time.sleep(MIN_MOVE_TIME)
-            
-        # Initialize Zobrist table if not already done
-        if not hasattr(self, 'zobrist_table'):
-            board_size = get_board_size(self.squares)
-            num_dots = board_size[0] * board_size[1]
-            self.zobrist_table = initialize_zobrist_table(num_dots)
-            
-        # Clear transposition table if it gets too large
-        if len(transposition_table) > TABLE_SIZE:
-            transposition_table.clear()
-            
-        # Use MCTS search directly with all required parameters
-        best_move = mcts_search(self.lines_drawn, self.squares, self.zobrist_table, time_limit, start_time)
-        
-        elapsed_time = time.time() - start_time
-        if elapsed_time < MIN_MOVE_TIME:
-            time.sleep(MIN_MOVE_TIME - elapsed_time)
-            
-        return best_move
-
-    def _update_game_phase(self):
-        total_squares = len(self.squares)
-        completed = len(self.completed_squares[1]) + len(self.completed_squares[2])
-        completion_ratio = completed / total_squares if total_squares > 0 else 0
-        
-        if completion_ratio < 0.25:
-            self.game_phase = "opening"
-        elif completion_ratio < 0.75:
-            self.game_phase = "midgame"
-        else:
-            self.game_phase = "endgame"
+        valid_moves.sort(key=lambda m: grok1_move_priority(m, self.lines_drawn, self.squares), reverse=True)
+        return grok1_bot_choose_move(self.lines_drawn, self.squares)
 
     def make_move(self, player, ai_type):
         start_time = time.time()
         
         if ai_type == "αβpruning":
             move = self._base_ai_move()
-        elif ai_type == "αβpruning_improved":
-            move = self._improved_ai_move()
-        elif ai_type == "MCTS":
-            move = self._mcts_ai_move()
-        else:  # grok
+        elif ai_type == "αβ_grok":
             move = self._grok_ai_move()
+        else:  # grok1
+            move = self._grok1_ai_move()
             
         if move:
             id1, id2 = move
@@ -326,11 +183,6 @@ class AISimulation:
                 "three_edge_squares": self.three_edge_squares[player]
             })
             
-            if move_time > MAX_MOVE_TIME:
-                print(f"Warning: {ai_type} AI exceeded time limit ({move_time:.2f}s)")
-                
-            self._update_game_phase()
-            
         return move
 
     def get_stats(self):
@@ -343,7 +195,6 @@ class AISimulation:
             },
             "chain_moves": self.chain_count,
             "three_edge_squares": self.three_edge_squares,
-            "game_phase": self.game_phase,
             "move_history": self.move_history
         }
 
@@ -455,7 +306,7 @@ def ai_selection_menu(screen_width, screen_height, font):
     pygame.display.set_caption("Select AIs for Match")
     clock = pygame.time.Clock()
     
-    ai_options = ["αβpruning", "αβpruning_improved", "αβ_grok", "MCTS"]
+    ai_options = ["αβpruning", "αβ_grok", "αβ_grok1"]
     selected = {1: None, 2: None}
     
     # Calculate button width based on longest text
@@ -580,6 +431,65 @@ def board_size_selection_menu(screen_width, screen_height, font):
         
         clock.tick(30)
 
+def time_mode_selection_menu(screen_width, screen_height, font):
+    pygame.init()
+    screen = pygame.display.set_mode((screen_width, screen_height))
+    pygame.display.set_caption("Select Time Mode")
+    clock = pygame.time.Clock()
+    
+    title = font.render("Select Time Mode", True, BLACK)
+    title_rect = title.get_rect(center=(screen_width//2, 50))
+    
+    button_w, button_h = 400, 60
+    spacing = 30
+    top_margin = 120
+    left_margin = (screen_width - button_w) // 2
+    
+    # Create buttons for each time mode
+    human_rect = pygame.Rect(left_margin, top_margin, button_w, button_h)
+    fixed_rect = pygame.Rect(left_margin, top_margin + button_h + spacing, button_w, button_h)
+    none_rect = pygame.Rect(left_margin, top_margin + 2 * (button_h + spacing), button_w, button_h)
+    
+    running = True
+    while running:
+        screen.fill(WHITE)
+        screen.blit(title, title_rect)
+        
+        # Draw buttons
+        pygame.draw.rect(screen, BLACK, human_rect, border_radius=10, width=2)
+        pygame.draw.rect(screen, BLACK, fixed_rect, border_radius=10, width=2)
+        pygame.draw.rect(screen, BLACK, none_rect, border_radius=10, width=2)
+        
+        # Draw button text
+        human_text = font.render("Human-like", True, BLACK)
+        fixed_text = font.render("Fixed (7.5 secs/move)", True, BLACK)
+        none_text = font.render("Unlimited", True, BLACK)
+        
+        human_text_rect = human_text.get_rect(center=human_rect.center)
+        fixed_text_rect = fixed_text.get_rect(center=fixed_rect.center)
+        none_text_rect = none_text.get_rect(center=none_rect.center)
+        
+        screen.blit(human_text, human_text_rect)
+        screen.blit(fixed_text, fixed_text_rect)
+        screen.blit(none_text, none_text_rect)
+        
+        pygame.display.flip()
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                return None
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mx, my = event.pos
+                if human_rect.collidepoint(mx, my):
+                    return "human"
+                elif fixed_rect.collidepoint(mx, my):
+                    return "fixed"
+                elif none_rect.collidepoint(mx, my):
+                    return "none"
+        
+        clock.tick(60)
+
 def run_simulation(rows, cols, ai1, ai2, max_games=1, swap_colors=True):
     games_played = 0
     while games_played < max_games:
@@ -622,7 +532,6 @@ def run_simulation(rows, cols, ai1, ai2, max_games=1, swap_colors=True):
         print(f"Average move times: {stats['avg_move_time']}")
         print(f"Chain moves: {stats['chain_moves']}")
         print(f"Three-edge squares: {stats['three_edge_squares']}")
-        print(f"Game phase: {stats['game_phase']}")
         
         # Show final board
         sim.draw_board(player1_ai, player2_ai)

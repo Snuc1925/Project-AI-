@@ -1,10 +1,9 @@
 import time
 import random
-from main import (
+from multiprocessing import Pool, cpu_count
+from main1 import (
     generate_squares, edges_of_square, extract_edge_set, get_valid_moves,
-    is_game_over, get_board_size, check_new_squares, find_forced_moves,
-    get_opening_move, minimax, evaluate_position, predict_chain_reaction,
-    is_square_controlled, bot_choose_move
+    is_game_over, check_new_squares, bot_choose_move
 )
 from main_grok import (
     bot_choose_move as grok_bot_choose_move,
@@ -12,24 +11,19 @@ from main_grok import (
     predict_chain_reaction as grok_predict_chain_reaction,
     find_forced_moves as grok_find_forced_moves,
     get_opening_move as grok_get_opening_move,
-    move_priority, evaluate_forced_move
+    move_priority
 )
-from main_mcts import (
-    bot_choose_move as mcts_bot_choose_move,
+from αβpruning import (
+    bot_choose_move as grok1_bot_choose_move,
+    evaluate_position as grok1_evaluate_position,
+    predict_chain_reaction as grok1_predict_chain_reaction,
+    find_forced_moves as grok1_find_forced_moves,
+    get_opening_move as grok1_get_opening_move,
+    move_priority as grok1_move_priority,
+    get_evaluation_values,
+    get_board_size,
     initialize_zobrist_table,
-    compute_zobrist_hash,
-    store_transposition,
-    lookup_transposition,
-    MCTSNode,
-    mcts_search,
-    mcts_simulation,
-    simulation_policy,
-    move_priority as mcts_move_priority,
-    evaluate_forced_move as mcts_evaluate_forced_move,
-    predict_chain_reaction as mcts_predict_chain_reaction,
-    evaluate_position as mcts_evaluate_position,
-    transposition_table,
-    TABLE_SIZE
+    TranspositionTable
 )
 
 # Board size options
@@ -52,183 +46,49 @@ class FastSimulation:
         self.move_times = {1: [], 2: []}
         self.total_moves = 0
         self.move_history = []
-        self.game_phase = "opening"
         self.chain_count = {1: 0, 2: 0}
         self.three_edge_squares = {1: 0, 2: 0}
-        
-        # Initialize Zobrist table for MCTS
-        self.zobrist_table = initialize_zobrist_table(rows * cols)
-        
-        # Clear transposition table if it gets too large
-        if len(transposition_table) > TABLE_SIZE:
-            transposition_table.clear()
 
     def _base_ai_move(self):
         start_time = time.time()
         
-        # Try opening book first
-        opening_move = get_opening_move(get_board_size(self.squares), self.lines_drawn)
-        if opening_move:
-            return opening_move
-            
-        # Check for forced moves
-        forced_moves = find_forced_moves(self.lines_drawn, self.squares)
-        if forced_moves:
-            return forced_moves[0]
-            
-        # Use minimax for non-forced moves
-        best_move = None
-        best_score = float('-inf')
-        alpha = float('-inf')
-        beta = float('inf')
-        
-        for move in get_valid_moves(self.lines_drawn, self.squares):
-            if time.time() - start_time > 5.0:  # TIME_LIMIT
-                break
-                
-            new_lines = self.lines_drawn.copy()
-            new_lines.append({"id1": move[0], "id2": move[1], "player": 2})
-            score = minimax(new_lines, self.squares, 3, alpha, beta, False)
-            chain_length = predict_chain_reaction(move, self.lines_drawn, self.squares)
-            score -= chain_length * 4.5
-            
-            if score > best_score:
-                best_score = score
-                best_move = move
-                
-        return best_move
-
-    def _improved_ai_move(self):
-        start_time = time.time()
-        
-        # Try opening book first
-        opening_move = get_opening_move(get_board_size(self.squares), self.lines_drawn)
-        if opening_move:
-            return opening_move
-            
-        # Check for forced moves
-        forced_moves = find_forced_moves(self.lines_drawn, self.squares)
-        if forced_moves:
-            best_forced_move = None
-            best_forced_score = float('-inf')
-            
-            for move in forced_moves:
-                if time.time() - start_time > 5.0:  # TIME_LIMIT
-                    break
-                    
-                # Evaluate forced move with chain reaction prediction
-                score = evaluate_forced_move(move, self.lines_drawn, self.squares)
-                if score > best_forced_score:
-                    best_forced_score = score
-                    best_forced_move = move
-                    
-            # Adjust threshold based on game phase
-            threshold = -6.0 if self.game_phase == "endgame" else -9.0
-            if best_forced_score > threshold:
-                return best_forced_move
-                
-        return self._base_ai_move()
+        return bot_choose_move(self.lines_drawn, self.squares)
 
     def _grok_ai_move(self):
         start_time = time.time()
         
-        # Count three-edge squares for time management
-        current_edges = extract_edge_set(self.lines_drawn)
-        three_edge_count = sum(1 for square in self.squares 
-                             if len([e for e in edges_of_square(square) if e in current_edges]) == 3)
-        
-        # Determine time limit based on game state
-        if three_edge_count >= 2:  # Critical position
-            time_limit = 7.0  # CRITICAL_MOVE_TIME
-        elif three_edge_count == 1:  # Single three-edge square
-            time_limit = 5.5  # BASE_MOVE_TIME + 1.0
-        else:
-            time_limit = 4.5  # BASE_MOVE_TIME
+        # Get valid moves and sort by priority
+        valid_moves = get_valid_moves(self.lines_drawn, self.squares)
+        if not valid_moves:
+            return None
             
-        # Check for opening moves
-        if len(self.lines_drawn) < 2:
-            time.sleep(1.5)  # MIN_MOVE_TIME for opening moves
-            
-        move = grok_bot_choose_move(self.lines_drawn, self.squares)
-        
-        # Ensure minimum move time
-        elapsed_time = time.time() - start_time
-        if elapsed_time < 1.5:  # MIN_MOVE_TIME
-            time.sleep(1.5 - elapsed_time)
-            
-        return move
+        valid_moves.sort(key=lambda m: move_priority(m, self.lines_drawn, self.squares), reverse=True)
+        return grok_bot_choose_move(self.lines_drawn, self.squares)
 
-    def _mcts_ai_move(self):
+    def _grok1_ai_move(self):
         start_time = time.time()
         
-        # Count three-edge squares for time management
-        current_edges = extract_edge_set(self.lines_drawn)
-        three_edge_count = sum(1 for square in self.squares 
-                             if len([e for e in edges_of_square(square) if e in current_edges]) == 3)
+        # Initialize Zobrist table and transposition table
+        initialize_zobrist_table()
+        transposition_table = TranspositionTable()
         
-        # Calculate game phase for time management
-        total_squares = len(self.squares)
-        completed_squares = sum(1 for square in self.squares if is_square_controlled(square, current_edges))
-        game_phase = completed_squares / total_squares if total_squares > 0 else 0
-        
-        # Determine time limit based on game state
-        if game_phase > 0.7:  # Endgame
-            time_limit = 7.0  # CRITICAL_MOVE_TIME
-        elif three_edge_count >= 2:  # Critical position
-            time_limit = 7.0  # CRITICAL_MOVE_TIME
-        elif three_edge_count == 1:  # Single three-edge square
-            time_limit = 5.5  # BASE_MOVE_TIME + 1.0
-        else:
-            time_limit = 4.5  # BASE_MOVE_TIME
+        # Get valid moves and sort by priority
+        valid_moves = get_valid_moves(self.lines_drawn, self.squares)
+        if not valid_moves:
+            return None
             
-        # Check for opening moves
-        if len(self.lines_drawn) < 2:
-            time.sleep(1.5)  # MIN_MOVE_TIME
-            
-        # Initialize Zobrist table if not already done
-        if not hasattr(self, 'zobrist_table'):
-            board_size = get_board_size(self.squares)
-            num_dots = board_size[0] * board_size[1]
-            self.zobrist_table = initialize_zobrist_table(num_dots)
-            
-        # Clear transposition table if it gets too large
-        if len(transposition_table) > TABLE_SIZE:
-            transposition_table.clear()
-            
-        # Use MCTS search directly with all required parameters
-        best_move = mcts_search(self.lines_drawn, self.squares, self.zobrist_table, time_limit, start_time)
-        
-        
-        # Ensure minimum move time
-        elapsed_time = time.time() - start_time
-        if elapsed_time < 1.5:  # MIN_MOVE_TIME
-            time.sleep(1.5 - elapsed_time)
-            
-        return best_move
-
-    def _update_game_phase(self):
-        total_squares = len(self.squares)
-        completed = len(self.completed_squares[1]) + len(self.completed_squares[2])
-        completion_ratio = completed / total_squares if total_squares > 0 else 0
-        
-        if completion_ratio < 0.25:
-            self.game_phase = "opening"
-        elif completion_ratio < 0.75:
-            self.game_phase = "midgame"
-        else:
-            self.game_phase = "endgame"
+        valid_moves.sort(key=lambda m: grok1_move_priority(m, self.lines_drawn, self.squares), reverse=True)
+        return grok1_bot_choose_move(self.lines_drawn, self.squares)
 
     def make_move(self, player, ai_type):
         start_time = time.time()
         
         if ai_type == "αβpruning":
             move = self._base_ai_move()
-        elif ai_type == "αβpruning_improved":
-            move = self._improved_ai_move()
-        elif ai_type == "MCTS":
-            move = self._mcts_ai_move()
-        else:  # grok
+        elif ai_type == "αβ_grok":
             move = self._grok_ai_move()
+        else:  # grok1
+            move = self._grok1_ai_move()
             
         if move:
             id1, id2 = move
@@ -258,11 +118,6 @@ class FastSimulation:
                 "three_edge_squares": self.three_edge_squares[player]
             })
             
-            if move_time > 7.5:  # MAX_MOVE_TIME
-                print(f"Warning: {ai_type} AI exceeded time limit ({move_time:.2f}s)")
-                
-            self._update_game_phase()
-            
         return move
 
     def get_stats(self):
@@ -275,7 +130,6 @@ class FastSimulation:
             },
             "chain_moves": self.chain_count,
             "three_edge_squares": self.three_edge_squares,
-            "game_phase": self.game_phase,
             "move_history": self.move_history
         }
 
@@ -295,18 +149,18 @@ def get_board_size_input():
             print("Please enter a number.")
 
 def get_ai_selection():
-    ai_options = ["αβpruning", "αβpruning_improved", "αβ_grok", "MCTS"]
+    ai_options = ["αβpruning", "αβ_grok", "αβ_grok1"]
     print("\nAvailable AIs:")
     for i, ai in enumerate(ai_options, 1):
         print(f"{i}. {ai}")
     
     while True:
         try:
-            choice1 = int(input("\nSelect AI for Player 1 (1-4): "))
-            choice2 = int(input("Select AI for Player 2 (1-4): "))
-            if 1 <= choice1 <= 4 and 1 <= choice2 <= 4 and choice1 != choice2:
+            choice1 = int(input("\nSelect AI for Player 1 (1-3): "))
+            choice2 = int(input("Select AI for Player 2 (1-3): "))
+            if 1 <= choice1 <= 3 and 1 <= choice2 <= 3 and choice1 != choice2:
                 return ai_options[choice1 - 1], ai_options[choice2 - 1]
-            print("Invalid choices. Please select different AIs (1-4).")
+            print("Invalid choices. Please select different AIs (1-3).")
         except ValueError:
             print("Please enter numbers.")
 
@@ -320,6 +174,46 @@ def get_num_games():
         except ValueError:
             print("Please enter a number.")
 
+def run_single_game(game_params):
+    rows, cols, ai1, ai2, game_num = game_params
+    print(f"\nStarting game {game_num}")
+    sim = FastSimulation(rows, cols)
+    
+    # Swap AI positions if needed
+    if game_num % 2 == 1:
+        ai1, ai2 = ai2, ai1
+        
+    player1_ai = ai1
+    player2_ai = ai2
+    
+    print(f"Player 1: {player1_ai}")
+    print(f"Player 2: {player2_ai}")
+    
+    # Game loop
+    while not is_game_over(sim.lines_drawn, sim.squares):
+        current_ai = player1_ai if sim.current_player == 1 else player2_ai
+        move = sim.make_move(sim.current_player, current_ai)
+        
+        if not move:
+            break
+    
+    stats = sim.get_stats()
+    print(f"Final scores: {stats['scores']}")
+    print(f"Total moves: {stats['total_moves']}")
+    print(f"Average move times: {stats['avg_move_time']}")
+    print(f"Chain moves: {stats['chain_moves']}")
+    print(f"Three-edge squares: {stats['three_edge_squares']}")
+    
+    # Return game results
+    return {
+        "scores": stats['scores'],
+        "total_moves": stats['total_moves'],
+        "avg_move_time": stats['avg_move_time'],
+        "chain_moves": stats['chain_moves'],
+        "player1_ai": player1_ai,
+        "player2_ai": player2_ai
+    }
+
 def run_simulation(rows, cols, ai1, ai2, num_games):
     results = {
         "total_moves": [],
@@ -331,38 +225,22 @@ def run_simulation(rows, cols, ai1, ai2, num_games):
     ai_wins = {ai1: 0, ai2: 0}
     draws = 0
     
-    for game in range(num_games):
-        print(f"\nStarting game {game + 1}/{num_games}")
-        sim = FastSimulation(rows, cols)
-        
-        # Swap AI positions if needed
-        if game % 2 == 1:
-            ai1, ai2 = ai2, ai1
-            
-        player1_ai = ai1
-        player2_ai = ai2
-        
-        print(f"Player 1: {player1_ai}")
-        print(f"Player 2: {player2_ai}")
-        
-        # Game loop
-        while not is_game_over(sim.lines_drawn, sim.squares):
-            current_ai = player1_ai if sim.current_player == 1 else player2_ai
-            move = sim.make_move(sim.current_player, current_ai)
-            
-            if not move:
-                break
-        
-        stats = sim.get_stats()
-        print(f"Final scores: {stats['scores']}")
-        print(f"Total moves: {stats['total_moves']}")
-        print(f"Average move times: {stats['avg_move_time']}")
-        print(f"Chain moves: {stats['chain_moves']}")
-        print(f"Game phase: {stats['game_phase']}")
-        
-        # Update results
-        p1_score = stats['scores'][1]
-        p2_score = stats['scores'][2]
+    # Prepare game parameters for parallel processing
+    game_params = [(rows, cols, ai1, ai2, i+1) for i in range(num_games)]
+    
+    # Use number of CPU cores, but limit to number of games
+    num_processes = min(cpu_count(), num_games)
+    
+    # Run games in parallel
+    with Pool(processes=num_processes) as pool:
+        game_results = pool.map(run_single_game, game_params)
+    
+    # Process results
+    for result in game_results:
+        p1_score = result['scores'][1]
+        p2_score = result['scores'][2]
+        player1_ai = result['player1_ai']
+        player2_ai = result['player2_ai']
         
         # Track wins by AI name
         if p1_score > p2_score:
@@ -375,19 +253,19 @@ def run_simulation(rows, cols, ai1, ai2, num_games):
             draws += 1
             print("It's a tie!")
             
-        results["total_moves"].append(stats["total_moves"])
-        results["avg_move_times"][player1_ai].append(stats["avg_move_time"][1])
-        results["avg_move_times"][player2_ai].append(stats["avg_move_time"][2])
-        results["chain_moves"][player1_ai].append(stats["chain_moves"][1])
-        results["chain_moves"][player2_ai].append(stats["chain_moves"][2])
+        results["total_moves"].append(result["total_moves"])
+        results["avg_move_times"][player1_ai].append(result["avg_move_time"][1])
+        results["avg_move_times"][player2_ai].append(result["avg_move_time"][2])
+        results["chain_moves"][player1_ai].append(result["chain_moves"][1])
+        results["chain_moves"][player2_ai].append(result["chain_moves"][2])
     
     # Print final results
     print("\n=== Final Results ===")
+    print(f"Board size: {rows}x{cols}")
     print(f"Total games: {num_games}")
     print(f"{ai1} wins: {ai_wins[ai1]}")
     print(f"{ai2} wins: {ai_wins[ai2]}")
     print(f"Draws: {draws}")
-    print(f"\nAverage moves per game: {sum(results['total_moves']) / num_games:.1f}")
     print(f"\nAverage move times:")
     print(f"{ai1}: {sum(results['avg_move_times'][ai1]) / num_games:.2f}s")
     print(f"{ai2}: {sum(results['avg_move_times'][ai2]) / num_games:.2f}s")
