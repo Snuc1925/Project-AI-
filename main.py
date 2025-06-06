@@ -4,6 +4,7 @@ from pygame import gfxdraw
 import os
 from collections import defaultdict
 import random
+import time
 
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
@@ -74,7 +75,7 @@ def draw_colored_squares(idx, squares, dot_positions, canvas, color=BLACK):
     points = [dot_positions[a], dot_positions[b], dot_positions[d], dot_positions[c]]  # theo chiều kim đồng hồ
     pygame.draw.polygon(canvas, color, points)
 
-def bot_choose_move(lines_drawn, squares):
+def bot_choose_move(lines_drawn, squares, list_squares_1=None, list_squares_2=None):
     line_set = set((l['id1'], l['id2']) for l in lines_drawn)
 
     # Nhóm theo số cạnh đã vẽ
@@ -106,7 +107,7 @@ def bot_choose_move(lines_drawn, squares):
     return None  # không còn nước nào
 
 
-def display_dots(rows, cols, mode, on_back_to_menu=None): 
+def display_dots(rows, cols, mode, bot1, bot2, on_back_to_menu=None, bot1_name=None, bot2_name=None): 
     pygame.init()
 
     screen_width = (cols - 1) * GRID_SPACING + 2 * MARGIN
@@ -146,12 +147,12 @@ def display_dots(rows, cols, mode, on_back_to_menu=None):
 
     if mode == "Person vs AI":
         player1_name = "Person"
-        player2_name = "AI"
+        player2_name = bot1_name if bot1_name else "AI"
         player1_color = BLUE
         player2_color = RED
     elif mode == "AI vs AI":
-        player1_name = "AI1" 
-        player2_name = "AI2" 
+        player1_name = bot1_name if bot1_name else "AI1"
+        player2_name = bot2_name if bot2_name else "AI2"
         player1_color = BLUE 
         player2_color = RED
     else:
@@ -193,99 +194,195 @@ def display_dots(rows, cols, mode, on_back_to_menu=None):
     list_squares_2 = []
             
     running = True
+
+    if mode == "AI vs AI":
+        is_player1_human = False
+    else:
+        is_player1_human = True
+
+    is_player2_human = False
+
+    print(mode, is_player1_human, is_player2_human)
+
+    # Add variables for move highlighting
+    last_move_dots = None
+    last_move_player = None  # Track which player made the last move
+
     while running:
+        current_time = pygame.time.get_ticks()
+        
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
 
-            if event.type == pygame.MOUSEBUTTONDOWN and current_player == 1:
-                mouse_x, mouse_y = event.pos
-                clicked_dot_id = get_point_at_vt(dot_positions, mouse_x, mouse_y)
+            # Xử lý input cho human player
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                # Kiểm tra xem có phải lượt của human không
+                is_current_player_human = (current_player == 1 and is_player1_human) or (current_player == 2 and is_player2_human)
+                
+                if is_current_player_human:
+                    mouse_x, mouse_y = event.pos
+                    clicked_dot_id = get_point_at_vt(dot_positions, mouse_x, mouse_y)
 
-                if clicked_dot_id is not None:
-                    if selected_dot_id is None:
-                        selected_dot_id = clicked_dot_id
-                    elif selected_dot_id == clicked_dot_id:
-                        print("Clicked same dot, deselecting.") 
-                        selected_dot_id = None
-                    else:
-                        id1 = selected_dot_id
-                        id2 = clicked_dot_id
-
-                        is_adjacent = False
-                        vt1 = dot_positions[id1]
-                        vt2 = dot_positions[id2]
-
-                        if abs(vt1[1] - vt2[1]) < 5 and abs(vt1[0] - vt2[0] - GRID_SPACING) < 5 or \
-                           abs(vt1[1] - vt2[1]) < 5 and abs(vt1[0] - vt2[0] + GRID_SPACING) < 5 :
-                           is_adjacent = True
-
-                        elif abs(vt1[0] - vt2[0]) < 5 and abs(vt1[1] - vt2[1] - GRID_SPACING) < 5 or \
-                             abs(vt1[0] - vt2[0]) < 5 and abs(vt1[1] - vt2[1] + GRID_SPACING) < 5:
-                             is_adjacent = True
-
-                        if is_adjacent:
-                            id_pair = tuple(sorted((id1, id2)))
-                            line_exists = any(line['id1'] == id_pair[0] and line['id2'] == id_pair[1] for line in lines_drawn)
-
-                            if not line_exists:
-                                new_squares_indices = check_new_squares(id_pair, lines_drawn, squares)
-                                lines_drawn.append({"id1": id_pair[0], "id2": id_pair[1], "player": current_player})
-                                print(lines_drawn)
-
-                                if new_squares_indices:
-                                    list_squares_1.extend(new_squares_indices)
-                                else:
-                                    current_player = 2  # Chuyển sang bot
-                            else:
-                                print("Line already exists.") 
+                    if clicked_dot_id is not None:
+                        if selected_dot_id is None:
+                            # Chọn dot đầu tiên
+                            selected_dot_id = clicked_dot_id
+                        elif selected_dot_id == clicked_dot_id:
+                            # Bỏ chọn dot
+                            print("Clicked same dot, deselecting.") 
+                            selected_dot_id = None
                         else:
-                            print("Dots are not adjacent, line not added.") 
-                        selected_dot_id = None
-                else: 
-                    print("Clicked empty space, deselecting.")
-                    selected_dot_id = None
+                            # Thử vẽ line giữa 2 dots
+                            id1 = selected_dot_id
+                            id2 = clicked_dot_id
 
-        # Bot turn
-        if current_player == 2:
-            move = bot_choose_move(lines_drawn, squares)
+                            # Kiểm tra 2 dots có kề nhau không
+                            is_adjacent = False
+                            vt1 = dot_positions[id1]
+                            vt2 = dot_positions[id2]
+
+                            if abs(vt1[1] - vt2[1]) < 5 and abs(vt1[0] - vt2[0] - GRID_SPACING) < 5 or \
+                               abs(vt1[1] - vt2[1]) < 5 and abs(vt1[0] - vt2[0] + GRID_SPACING) < 5 :
+                               is_adjacent = True
+                            elif abs(vt1[0] - vt2[0]) < 5 and abs(vt1[1] - vt2[1] - GRID_SPACING) < 5 or \
+                                 abs(vt1[0] - vt2[0]) < 5 and abs(vt1[1] - vt2[1] + GRID_SPACING) < 5:
+                                 is_adjacent = True
+
+                            if is_adjacent:
+                                id_pair = tuple(sorted((id1, id2)))
+                                line_exists = any(line['id1'] == id_pair[0] and line['id2'] == id_pair[1] for line in lines_drawn)
+
+                                if not line_exists:
+                                    # Vẽ line và kiểm tra squares mới
+                                    new_squares_indices = check_new_squares(id_pair, lines_drawn, squares)
+                                    lines_drawn.append({"id1": id_pair[0], "id2": id_pair[1], "player": current_player})
+                                    
+                                    SURF.fill(WHITE)
+
+                                    score_p1_text = f"{player1_name}: {len(list_squares_1)}"
+                                    score_p2_text = f"{player2_name}: {len(list_squares_2)}"
+                                    score_p1_surf = score_font.render(score_p1_text, True, player1_color)
+                                    score_p2_surf = score_font.render(score_p2_text, True, player2_color)
+                                    SURF.blit(score_p1_surf, (start_x_p1, text_y))
+                                    SURF.blit(score_p2_surf, (start_x_p2, text_y))
+
+                                    for idx in list_squares_1:
+                                        draw_colored_squares(idx, squares, dot_positions, SURF, LIGHT_BLUE)
+                                    for idx in list_squares_2:
+                                        draw_colored_squares(idx, squares, dot_positions, SURF, LIGHT_RED)
+
+                                    for line_info in lines_drawn:
+                                        draw_color = BLUE if line_info["player"] == 1 else RED
+                                        draw_line(SURF, dot_positions, line_info["id1"], line_info["id2"], draw_color)
+
+                                    for i, pos in enumerate(dot_positions):
+                                        x, y = pos
+                                        radius = DOT_RADIUS
+                                        dot_color = BLACK
+                                        if i == selected_dot_id:
+                                            radius = DOT_HIGHLIGHT_RADIUS
+                                            dot_color = GREEN
+                                        gfxdraw.filled_circle(SURF, x, y, radius, dot_color)
+                                        gfxdraw.aacircle(SURF, x, y, radius, dot_color)
+
+                                    pygame.display.update()
+
+                                    print(f"Player {current_player} added line: {id_pair}")
+
+                                    # Cập nhật squares và chuyển lượt
+                                    if new_squares_indices:
+                                        if current_player == 1:
+                                            list_squares_1.extend(new_squares_indices)
+                                        else:
+                                            list_squares_2.extend(new_squares_indices)
+                                        # Không chuyển lượt nếu tạo được square
+                                    else:
+                                        # Chuyển lượt
+                                        current_player = 2 if current_player == 1 else 1
+                                else:
+                                    print("Line already exists.") 
+                            else:
+                                print("Dots are not adjacent, line not added.") 
+                            selected_dot_id = None
+                    else: 
+                        print("Clicked empty space, deselecting.")
+                        selected_dot_id = None
+
+        # Xử lý lượt AI
+        is_current_player_ai = (current_player == 1 and not is_player1_human) or (current_player == 2 and not is_player2_human)
+        
+        if is_current_player_ai:
+            # Add delay in AI vs AI mode
+            if mode == "AI vs AI":
+                pygame.time.wait(750)  # 750ms delay between AI moves
+                
+            # Chọn bot phù hợp
+            if current_player == 1:
+                current_bot = bot1
+            else:
+                current_bot = bot2 if mode == "AI vs AI" else bot1
+            
+            move = current_bot(lines_drawn, squares, list_squares_1, list_squares_2)
+
             if move:
                 id1, id2 = move
                 new_squares_indices = check_new_squares((id1, id2), lines_drawn, squares)
-                lines_drawn.append({"id1": id1, "id2": id2, "player": 2})
-                print(lines_drawn)
-                print(f"Bot added line: {id1}-{id2}")
+                lines_drawn.append({"id1": id1, "id2": id2, "player": current_player})
+                print(f"AI {current_player} added line: {id1}-{id2}")
 
+                # Set highlight for the last move
+                last_move_dots = (id1, id2)
+                last_move_player = current_player
+
+                # Cập nhật squares và chuyển lượt
                 if new_squares_indices:
-                    list_squares_2.extend(new_squares_indices)
+                    if current_player == 1:
+                        list_squares_1.extend(new_squares_indices)
+                    else:
+                        list_squares_2.extend(new_squares_indices)
+                    # AI tiếp tục nếu tạo được square
                 else:
-                    current_player = 1  # Chuyển lại cho người chơi
+                    # Chuyển lượt
+                    current_player = 2 if current_player == 1 else 1
 
+        # Vẽ màn hình
         SURF.fill(WHITE) 
 
+        # Vẽ điểm số
         score_p1_text = f"{player1_name}: {len(list_squares_1)}"
         score_p2_text = f"{player2_name}: {len(list_squares_2)}"
 
         score_p1_surf = score_font.render(score_p1_text, True, player1_color)
         score_p2_surf = score_font.render(score_p2_text, True, player2_color)
         
+        # Tính vị trí hiển thị điểm số
+        p1_width, p1_height = score_p1_surf.get_size()
+        p2_width, p2_height = score_p2_surf.get_size()
+        spacing = 50 
+        total_width = p1_width + spacing + p2_width
+        start_x_p1 = (screen_width - total_width) // 2
+        start_x_p2 = start_x_p1 + p1_width + spacing
+        text_y = 30
+        
         SURF.blit(score_p1_surf, (start_x_p1, text_y))
         SURF.blit(score_p2_surf, (start_x_p2, text_y))
 
+        # Vẽ colored squares
         for idx in list_squares_1:
             draw_colored_squares(idx, squares, dot_positions, SURF, LIGHT_BLUE)
         for idx in list_squares_2:
             draw_colored_squares(idx, squares, dot_positions, SURF, LIGHT_RED)
         
+        # Vẽ lines
         for line_info in lines_drawn:
             if line_info["player"] == 1:
-                draw_color = BLUE
+                draw_color = player1_color
             else:
-                draw_color = RED
+                draw_color = player2_color
             draw_line(SURF, dot_positions, line_info["id1"], line_info["id2"], draw_color)
 
-
-
+        # Vẽ dots with highlight for last move
         for i, pos in enumerate(dot_positions):
             x, y = pos
             radius = DOT_RADIUS
@@ -294,27 +391,29 @@ def display_dots(rows, cols, mode, on_back_to_menu=None):
             if i == selected_dot_id:
                 radius = DOT_HIGHLIGHT_RADIUS
                 dot_color = GREEN
+            elif last_move_dots and (i == last_move_dots[0] or i == last_move_dots[1]):
+                radius = DOT_HIGHLIGHT_RADIUS
+                # Use player color for the highlight
+                dot_color = player1_color if last_move_player == 1 else player2_color
 
             gfxdraw.filled_circle(SURF, x, y, radius, dot_color)
             gfxdraw.aacircle(SURF, x, y, radius, dot_color)
 
         pygame.display.update()
         
-        # check xem full các ô vuông chưa thì hiển thị màn hình thắng, thua, hòa
+        # Kiểm tra kết thúc game
         if len(list_squares_1) + len(list_squares_2) == len(squares):
             overlay = pygame.Surface((screen_width, screen_height))
-            overlay.set_alpha(200)  # Độ mờ
-            overlay.fill((0, 0, 0))  # Màu nền tối
+            overlay.set_alpha(200)
+            overlay.fill((0, 0, 0))
 
+            # Xác định kết quả
             if len(list_squares_1) > len(list_squares_2):
-                result_text = "You win"
-                result_color = "white"
+                result_text = f"{player1_name} wins!"
             elif len(list_squares_1) < len(list_squares_2):
-                result_text = "You lose"
-                result_color = "white"
+                result_text = f"{player2_name} wins!"
             else:
-                result_text = "You draw"
-                result_color = "white"
+                result_text = "It's a draw!"
 
             result_font = pygame.font.SysFont('Arial', 60)
             result_surf = result_font.render(result_text, True, WHITE) 
@@ -324,8 +423,6 @@ def display_dots(rows, cols, mode, on_back_to_menu=None):
             SURF.blit(result_surf, result_rect)
 
             button_font = pygame.font.SysFont("Arial", 25)
-
-
             button_text_content = "Go back to Menu"
             button_color = (0, 128, 255)
             button_hover_color = (50, 178, 255)
@@ -338,13 +435,14 @@ def display_dots(rows, cols, mode, on_back_to_menu=None):
             button_text_surf = button_font.render(button_text_content, True, WHITE)
             button_text_rect = button_text_surf.get_rect(center=button_rect.center)
             
-            # Đổi màu khi hover vào nút Go back to Menu
+            # Đổi màu khi hover vào nút
             mouse_pos = pygame.mouse.get_pos()
             current_button_color = button_hover_color if button_rect.collidepoint(mouse_pos) else button_color
-            pygame.draw.rect(SURF, current_button_color, button_rect, border_radius=18) # Rounded corners
+            pygame.draw.rect(SURF, current_button_color, button_rect, border_radius=18)
             SURF.blit(button_text_surf, button_text_rect)
             pygame.display.update()
 
+            # Chờ user action
             waiting_for_action = True
             while waiting_for_action:
                 for event in pygame.event.get():
@@ -352,32 +450,27 @@ def display_dots(rows, cols, mode, on_back_to_menu=None):
                         waiting_for_action = False
                         running = False 
                     elif event.type == pygame.MOUSEBUTTONDOWN:
-                        # check khi bấm có bấm vào vùng của nút Go back to menu không
                         if event.button == 1 and button_rect.collidepoint(event.pos):
                             waiting_for_action = False
                             running = False 
                             if on_back_to_menu: on_back_to_menu()
 
-        clock.tick(30)
+        clock.tick(60)
 
     pygame.quit()
     
 
-def start_display(board_size_str, mode, on_back_to_menu=None):
+def start_display(board_size_str, mode, bot1=None, bot2=None, on_back=None, bot1_name=None, bot2_name=None):
     try:
         parts = board_size_str.split('x')
         if len(parts) != 2:
             raise ValueError("Board size string must be in 'RowsxCols' format (e.g., '4x5')")
-
         rows = int(parts[0])
         cols = int(parts[1])
-
         if rows < 1 or cols < 1:
-             print("Error: Board dimensions must be at least 1x1.")
-             return
-
-        display_dots(rows, cols, mode,on_back_to_menu)
-
+            print("Error: Board dimensions must be at least 1x1.")
+            return
+        display_dots(rows, cols, mode, bot1, bot2, on_back, bot1_name, bot2_name)
     except (ValueError, IndexError) as e:
         print(f"Error parsing board size string '{board_size_str}': {e}")
     except Exception as e:
