@@ -4,15 +4,23 @@ import os
 from tkinter import messagebox
 from test_main_easy import start_display as start_display_easy
 from MCTS import start_display as start_display_medium
-
 from test_main_hard import start_display as start_display_hard
 from main import start_display
+from αβpruning import start_display as start_display_αβpruning
 
 from test_main_easy import bot_choose_move as bot_choose_move_easy
 from MCTS import bot_choose_move_MCTS as bot_choose_move_MCTS
 from test_main_hard import bot_choose_move as bot_choose_move_hard
 from GA import bot_choose_move as bot_choose_move_GA
+from αβpruning import (
+    bot_choose_move as bot_choose_move_αβpruning,
+    TranspositionTable,
+    initialize_zobrist_table
+)
 
+# Initialize the transposition table and Zobrist hashing
+initialize_zobrist_table()
+transposition_table = TranspositionTable()
 
 class DotAndBoxGame:
     def __init__(self, root):
@@ -36,8 +44,8 @@ class DotAndBoxGame:
             ("Random", bot_choose_move_easy , "#8CFF9E"),                # xanh nhạt
             ("Intuitive Algorithm", bot_choose_move_hard , "#FFEB99"),   # vàng nhạt
             ("Genetic Algorithm", bot_choose_move_GA, "#FFA07A"),     # cam nhạt
-            ("Alpha-Beta", bot_choose_move_hard, "#FF6666"),            # đỏ nhạt
-            ("MCTS", bot_choose_move_MCTS, "#9933FF")                  # tím đậm
+            ("Alpha-Beta", bot_choose_move_αβpruning, "#FF6666"),            # đỏ nhạt
+            ("MCTS", bot_choose_move_MCTS, "#9933FF"),                  # tím đậm
         ]
 
     def clear_window(self):
@@ -109,7 +117,8 @@ class DotAndBoxGame:
             ("Level 1", "green", "white"),
             ("Level 2", "yellow", "black"),
             ("Level 3", "#ff9999", "blue"),
-            ("Level 4", "#cc0000", "white")
+            ("Level 4", "#cc0000", "white"),
+            ("Level 5", "#800080", "white")
         ]
 
         for i, (level, bg_color, fg_color) in enumerate(levels):
@@ -119,15 +128,6 @@ class DotAndBoxGame:
                 command=lambda lvl=level: self.set_level_and_continue(lvl)
             )
             btn.grid(row=i+1, column=0, pady=2)
-
-        # Level 5 with blinking effect
-        self.level5_btn = tk.Button(
-            container, text="Level 5", font=("VNI-Dom", 14),
-            bg="#800080", fg="white", bd=5,
-            command=lambda: self.set_level_and_continue("Level 5")
-        )
-        self.level5_btn.grid(row=5, column=0, pady=2)
-        self.blink_level5()
 
         btn_back = tk.Button(self.root, text="← Quay lại", font=("VNI-Dom", 10), command=self.create_main_menu)
         btn_back.pack(side=tk.BOTTOM, pady=10)
@@ -265,21 +265,34 @@ class DotAndBoxGame:
 
             bot1 = None
             bot2 = None
+            bot1_name = None
+            bot2_name = None
 
             if mode == "Person vs AI":
                 if self.selected_level == "Level 1":
                     bot1 = bot_choose_move_easy
+                    bot1_name = "Random"
                 elif self.selected_level == "Level 2":
-                    bot1 = bot_choose_move_medium
+                    bot1 = bot_choose_move_GA
+                    bot1_name = "Genetic Algorithm"
                 elif self.selected_level == "Level 3":
                     bot1 = bot_choose_move_hard
+                    bot1_name = "Intuitive Algorithm"
+                elif self.selected_level == "Level 4":
+                    bot1 = bot_choose_move_MCTS
+                    bot1_name = "MCTS"
+                elif self.selected_level == "Level 5":
+                    bot1 = bot_choose_move_αβpruning
+                    bot1_name = "αβpruning"
                 else:
                     raise ValueError("Chưa chọn mức độ khó.")
             else:
                 bot1 = self.selected_ai1
                 bot2 = self.selected_ai2
+                bot1_name = self.selected_ai1_name
+                bot2_name = self.selected_ai2_name
                 print(self.selected_ai1_name, self.selected_ai2_name)
-            start_display(real_board_size, mode, bot1, bot2, self.on_back_to_menu)
+            start_display(real_board_size, mode, bot1, bot2, self.on_back_to_menu, bot1_name, bot2_name)
         except Exception as e:
             messagebox.showerror("Error", f"Could not start game: {e}")
         finally:
