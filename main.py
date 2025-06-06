@@ -4,6 +4,7 @@ from pygame import gfxdraw
 import os
 from collections import defaultdict
 import random
+import time
 
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
@@ -74,7 +75,7 @@ def draw_colored_squares(idx, squares, dot_positions, canvas, color=BLACK):
     points = [dot_positions[a], dot_positions[b], dot_positions[d], dot_positions[c]]  # theo chiều kim đồng hồ
     pygame.draw.polygon(canvas, color, points)
 
-def bot_choose_move(lines_drawn, squares):
+def bot_choose_move(lines_drawn, squares, list_squares_1=None, list_squares_2=None):
     line_set = set((l['id1'], l['id2']) for l in lines_drawn)
 
     # Nhóm theo số cạnh đã vẽ
@@ -106,7 +107,7 @@ def bot_choose_move(lines_drawn, squares):
     return None  # không còn nước nào
 
 
-def display_dots(rows, cols, mode, bot1, bot2, on_back_to_menu=None): 
+def display_dots(rows, cols, mode, bot1, bot2, on_back_to_menu=None, bot1_name=None, bot2_name=None): 
     pygame.init()
 
     screen_width = (cols - 1) * GRID_SPACING + 2 * MARGIN
@@ -146,12 +147,12 @@ def display_dots(rows, cols, mode, bot1, bot2, on_back_to_menu=None):
 
     if mode == "Person vs AI":
         player1_name = "Person"
-        player2_name = "AI"
+        player2_name = bot1_name if bot1_name else "AI"
         player1_color = BLUE
         player2_color = RED
     elif mode == "AI vs AI":
-        player1_name = "AI1" 
-        player2_name = "AI2" 
+        player1_name = bot1_name if bot1_name else "AI1"
+        player2_name = bot2_name if bot2_name else "AI2"
         player1_color = BLUE 
         player2_color = RED
     else:
@@ -203,7 +204,13 @@ def display_dots(rows, cols, mode, bot1, bot2, on_back_to_menu=None):
 
     print(mode, is_player1_human, is_player2_human)
 
+    # Add variables for move highlighting
+    last_move_dots = None
+    last_move_player = None  # Track which player made the last move
+
     while running:
+        current_time = pygame.time.get_ticks()
+        
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -275,6 +282,10 @@ def display_dots(rows, cols, mode, bot1, bot2, on_back_to_menu=None):
         is_current_player_ai = (current_player == 1 and not is_player1_human) or (current_player == 2 and not is_player2_human)
         
         if is_current_player_ai:
+            # Add delay in AI vs AI mode
+            if mode == "AI vs AI":
+                pygame.time.wait(750)  # 750ms delay between AI moves
+                
             # Chọn bot phù hợp
             if current_player == 1:
                 current_bot = bot1
@@ -288,6 +299,10 @@ def display_dots(rows, cols, mode, bot1, bot2, on_back_to_menu=None):
                 new_squares_indices = check_new_squares((id1, id2), lines_drawn, squares)
                 lines_drawn.append({"id1": id1, "id2": id2, "player": current_player})
                 print(f"AI {current_player} added line: {id1}-{id2}")
+
+                # Set highlight for the last move
+                last_move_dots = (id1, id2)
+                last_move_player = current_player
 
                 # Cập nhật squares và chuyển lượt
                 if new_squares_indices:
@@ -336,7 +351,7 @@ def display_dots(rows, cols, mode, bot1, bot2, on_back_to_menu=None):
                 draw_color = player2_color
             draw_line(SURF, dot_positions, line_info["id1"], line_info["id2"], draw_color)
 
-        # Vẽ dots
+        # Vẽ dots with highlight for last move
         for i, pos in enumerate(dot_positions):
             x, y = pos
             radius = DOT_RADIUS
@@ -345,6 +360,10 @@ def display_dots(rows, cols, mode, bot1, bot2, on_back_to_menu=None):
             if i == selected_dot_id:
                 radius = DOT_HIGHLIGHT_RADIUS
                 dot_color = GREEN
+            elif last_move_dots and (i == last_move_dots[0] or i == last_move_dots[1]):
+                radius = DOT_HIGHLIGHT_RADIUS
+                # Use player color for the highlight
+                dot_color = player1_color if last_move_player == 1 else player2_color
 
             gfxdraw.filled_circle(SURF, x, y, radius, dot_color)
             gfxdraw.aacircle(SURF, x, y, radius, dot_color)
@@ -405,26 +424,22 @@ def display_dots(rows, cols, mode, bot1, bot2, on_back_to_menu=None):
                             running = False 
                             if on_back_to_menu: on_back_to_menu()
 
-        clock.tick(30)
+        clock.tick(60)
 
     pygame.quit()
     
 
-def start_display(board_size_str, mode, bot1, bot2, on_back_to_menu=None):
+def start_display(board_size_str, mode, bot1=None, bot2=None, on_back=None, bot1_name=None, bot2_name=None):
     try:
         parts = board_size_str.split('x')
         if len(parts) != 2:
             raise ValueError("Board size string must be in 'RowsxCols' format (e.g., '4x5')")
-
         rows = int(parts[0])
         cols = int(parts[1])
-
         if rows < 1 or cols < 1:
-             print("Error: Board dimensions must be at least 1x1.")
-             return
-
-        display_dots(rows, cols, mode, bot1, bot2, on_back_to_menu)
-
+            print("Error: Board dimensions must be at least 1x1.")
+            return
+        display_dots(rows, cols, mode, bot1, bot2, on_back, bot1_name, bot2_name)
     except (ValueError, IndexError) as e:
         print(f"Error parsing board size string '{board_size_str}': {e}")
     except Exception as e:
