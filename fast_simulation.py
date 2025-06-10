@@ -8,9 +8,8 @@ from main import (
     edges_of_square,
 )
 
-from αβpruning import (
-    bot_choose_move as bot_choose_move_αβpruning,
-    initialize_zobrist_table,
+from alphabetapruning import (
+    bot_choose_move as bot_choose_move_alphabetapruning,
     TranspositionTable,
     is_game_over
 )
@@ -41,16 +40,6 @@ class FastSimulation:
         self.chain_count = {1: 0, 2: 0}
         self.three_edge_squares = {1: 0, 2: 0}
 
-
-    def _αβpruning_ai_move(self):
-        start_time = time.time()
-        
-        # Initialize Zobrist table and transposition table for each move
-        initialize_zobrist_table()
-        self.transposition_table = TranspositionTable()
-        
-        return bot_choose_move_αβpruning(self.lines_drawn, self.squares, self.completed_squares[1], self.completed_squares[2])
-
     def _GA_ai_move(self):
         return bot_choose_move_GA(self.lines_drawn, self.squares, self.completed_squares[1], self.completed_squares[2])
 
@@ -62,12 +51,21 @@ class FastSimulation:
 
     def _random_ai_move(self):
         return bot_choose_move_easy(self.lines_drawn, self.squares, self.completed_squares[1], self.completed_squares[2])
+    def _minimax_ai_move(self):
+        # Convert sets to lists for minimax
+        list_squares_1 = list(self.completed_squares[1])
+        list_squares_2 = list(self.completed_squares[2])
+        
+        # Initialize transposition table for minimax
+        self.transposition_table = TranspositionTable()
+        
+        return bot_choose_move_alphabetapruning(self.lines_drawn, self.squares, list_squares_1, list_squares_2)
 
     def make_move(self, player, ai_type):
         start_time = time.time()
         
-        if ai_type == "αβpruning":
-            move = self._αβpruning_ai_move()
+        if ai_type == "alphabetapruning":
+            move = self._alphabetapruning_ai_move()
         elif ai_type == "GA":
             move = self._GA_ai_move()
         elif ai_type == "MCTS":
@@ -76,6 +74,8 @@ class FastSimulation:
             move = self._intuitive_ai_move()
         elif ai_type == "Random":
             move = self._random_ai_move()
+        elif ai_type == "Minimax":
+            move = self._minimax_ai_move()
         else:
             raise ValueError(f"Unknown AI type: {ai_type}")
             
@@ -138,18 +138,18 @@ def get_board_size_input():
             print("Please enter a number.")
 
 def get_ai_selection():
-    ai_options = ["αβpruning", "GA", "MCTS", "Intuitive", "Random"]
+    ai_options = ["alphabetapruning", "GA", "MCTS", "Intuitive", "Random", "Minimax"]
     print("\nAvailable AIs:")
     for i, ai in enumerate(ai_options, 1):
         print(f"{i}. {ai}")
     
     while True:
         try:
-            choice1 = int(input("\nSelect AI for Player 1 (1-5): "))
-            choice2 = int(input("Select AI for Player 2 (1-5): "))
-            if 1 <= choice1 <= 5 and 1 <= choice2 <= 5 and choice1 != choice2:
+            choice1 = int(input("\nSelect AI for Player 1 (1-6): "))
+            choice2 = int(input("Select AI for Player 2 (1-6): "))
+            if 1 <= choice1 <= 6 and 1 <= choice2 <= 6 and choice1 != choice2:
                 return ai_options[choice1 - 1], ai_options[choice2 - 1]
-            print("Invalid choices. Please select different AIs (1-5).")
+            print("Invalid choices. Please select different AIs (1-6).")
         except ValueError:
             print("Please enter numbers.")
 
